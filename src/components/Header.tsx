@@ -1,6 +1,11 @@
 import { Link } from "react-router-dom";
+import { useAuth } from "@/hooks/useAuth";
+import { Button } from "./ui/button";
+import { LogOut, LogIn, Shield } from "lucide-react";
 
 const Header = () => {
+  const { user, isAdmin, signOut } = useAuth();
+  
   return (
     <header className="border-b-2 border-primary bg-background">
       <div className="container mx-auto px-6 py-8">
@@ -35,6 +40,39 @@ const Header = () => {
             >
               Contacto
             </Link>
+            
+            {isAdmin && (
+              <Link 
+                to="/admin" 
+                className="text-sm uppercase tracking-wider font-medium hover:opacity-60 transition-opacity flex items-center gap-2"
+              >
+                <Shield className="h-4 w-4" />
+                Admin
+              </Link>
+            )}
+            
+            {user ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={signOut}
+                className="border-2 border-primary"
+              >
+                <LogOut className="h-4 w-4 mr-2" />
+                Salir
+              </Button>
+            ) : (
+              <Link to="/auth">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="border-2 border-primary"
+                >
+                  <LogIn className="h-4 w-4 mr-2" />
+                  Entrar
+                </Button>
+              </Link>
+            )}
           </nav>
           
           {/* Mobile menu button */}
