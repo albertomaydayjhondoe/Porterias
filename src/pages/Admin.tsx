@@ -1,13 +1,13 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
-import { useAuth } from "@/hooks/useAuth";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Loader2, Upload, Trash2 } from "lucide-react";
+import { Loader2, Upload, Trash2, Lock } from "lucide-react";
+
+const ADMIN_PASSWORD = "paperboy2025";
 
 interface ComicStrip {
   id: string;
@@ -17,27 +17,38 @@ interface ComicStrip {
 }
 
 const Admin = () => {
-  const { isAdmin, loading: authLoading, user } = useAuth();
-  const navigate = useNavigate();
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [password, setPassword] = useState("");
   const [strips, setStrips] = useState<ComicStrip[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [title, setTitle] = useState("");
   const [publishDate, setPublishDate] = useState(new Date().toISOString().split('T')[0]);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
   useEffect(() => {
-    if (!authLoading && !isAdmin) {
-      toast.error("Acceso denegado");
-      navigate("/auth");
+    const savedAuth = sessionStorage.getItem("admin_auth");
+    if (savedAuth === "true") {
+      setIsAuthenticated(true);
     }
-  }, [isAdmin, authLoading, navigate]);
+  }, []);
 
   useEffect(() => {
-    if (isAdmin) {
+    if (isAuthenticated) {
       loadStrips();
     }
-  }, [isAdmin]);
+  }, [isAuthenticated]);
+
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (password === ADMIN_PASSWORD) {
+      setIsAuthenticated(true);
+      sessionStorage.setItem("admin_auth", "true");
+      toast.success("Acceso concedido");
+    } else {
+      toast.error("Contraseña incorrecta");
+    }
+  };
 
   const loadStrips = async () => {
     try {
@@ -95,7 +106,6 @@ const Admin = () => {
           title: title || null,
           image_url: publicUrl,
           publish_date: publishDate,
-          created_by: user?.id,
         });
 
       if (insertError) throw insertError;
@@ -142,15 +152,41 @@ const Admin = () => {
     }
   };
 
-  if (authLoading || loading) {
+  // Login screen
+  if (!isAuthenticated) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin" />
+      <div className="min-h-screen flex flex-col">
+        <Header />
+        <main className="flex-grow flex items-center justify-center py-16 px-6">
+          <div className="w-full max-w-md">
+            <div className="border-2 border-primary p-8 bg-card shadow-editorial">
+              <div className="text-center mb-8">
+                <Lock className="h-12 w-12 mx-auto mb-4 text-primary" />
+                <h1 className="text-3xl font-bold">Panel Admin</h1>
+                <p className="text-muted-foreground mt-2">
+                  Introduce la contraseña para acceder
+                </p>
+              </div>
+              <form onSubmit={handleLogin} className="space-y-4">
+                <Input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Contraseña"
+                  className="border-2 border-primary"
+                  autoFocus
+                />
+                <Button type="submit" className="w-full border-2 border-primary" variant="outline">
+                  Entrar
+                </Button>
+              </form>
+            </div>
+          </div>
+        </main>
+        <Footer />
       </div>
     );
   }
-
-  if (!isAdmin) return null;
 
   return (
     <div className="min-h-screen flex flex-col">

@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import StripViewer from "@/components/StripViewer";
-import ArchiveRoller from "@/components/ArchiveRoller";
+import ArchiveSlider from "@/components/ArchiveSlider";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
@@ -105,9 +105,9 @@ const Index = () => {
           hasPrevious={currentStripIndex < strips.length - 1}
         />
 
-        {/* Horizontal archive roller */}
+        {/* Archive slider */}
         {strips.length > 1 && (
-          <ArchiveRoller
+          <ArchiveSlider
             strips={strips.map(s => ({
               id: s.id,
               imageUrl: s.image_url,
