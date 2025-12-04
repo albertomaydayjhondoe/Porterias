@@ -5,9 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Loader2, Upload, Trash2, Lock } from "lucide-react";
-
-const ADMIN_PASSWORD = "paperboy2025";
+import { Loader2, Upload, Trash2, Lock, LogOut } from "lucide-react";
+import { User, Session } from "@supabase/supabase-js";
 
 interface ComicStrip {
   id: string;
@@ -17,37 +16,108 @@ interface ComicStrip {
 }
 
 const Admin = () => {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [user, setUser] = useState<User | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [authLoading, setAuthLoading] = useState(false);
+  
   const [strips, setStrips] = useState<ComicStrip[]>([]);
-  const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [title, setTitle] = useState("");
   const [publishDate, setPublishDate] = useState(new Date().toISOString().split('T')[0]);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
+  // Set up auth state listener
   useEffect(() => {
-    const savedAuth = sessionStorage.getItem("admin_auth");
-    if (savedAuth === "true") {
-      setIsAuthenticated(true);
-    }
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (event, session) => {
+        setSession(session);
+        setUser(session?.user ?? null);
+        
+        // Check admin role with setTimeout to avoid deadlock
+        if (session?.user) {
+          setTimeout(() => {
+            checkAdminRole(session.user.id);
+          }, 0);
+        } else {
+          setIsAdmin(false);
+          setLoading(false);
+        }
+      }
+    );
+
+    // Check for existing session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setUser(session?.user ?? null);
+      if (session?.user) {
+        checkAdminRole(session.user.id);
+      } else {
+        setLoading(false);
+      }
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
+  // Load strips when admin is confirmed
   useEffect(() => {
-    if (isAuthenticated) {
+    if (isAdmin) {
       loadStrips();
     }
-  }, [isAuthenticated]);
+  }, [isAdmin]);
 
-  const handleLogin = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (password === ADMIN_PASSWORD) {
-      setIsAuthenticated(true);
-      sessionStorage.setItem("admin_auth", "true");
-      toast.success("Acceso concedido");
-    } else {
-      toast.error("Contraseña incorrecta");
+  const checkAdminRole = async (userId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", userId)
+        .eq("role", "admin")
+        .maybeSingle();
+
+      if (error) throw error;
+      setIsAdmin(!!data);
+    } catch (error: any) {
+      console.error("Error checking admin role:", error.message);
+      setIsAdmin(false);
+    } finally {
+      setLoading(false);
     }
+  };
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!email || !password) {
+      toast.error("Introduce email y contraseña");
+      return;
+    }
+
+    setAuthLoading(true);
+
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (error) throw error;
+      toast.success("Sesión iniciada");
+    } catch (error: any) {
+      toast.error("Error: " + error.message);
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    setIsAdmin(false);
+    toast.success("Sesión cerrada");
   };
 
   const loadStrips = async () => {
@@ -61,8 +131,6 @@ const Admin = () => {
       setStrips(data || []);
     } catch (error: any) {
       toast.error("Error al cargar tiras: " + error.message);
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -152,8 +220,21 @@ const Admin = () => {
     }
   };
 
+  // Loading state
+  if (loading) {
+    return (
+      <div className="min-h-screen flex flex-col">
+        <Header />
+        <main className="flex-grow flex items-center justify-center">
+          <Loader2 className="h-8 w-8 animate-spin" />
+        </main>
+        <Footer />
+      </div>
+    );
+  }
+
   // Login screen
-  if (!isAuthenticated) {
+  if (!user) {
     return (
       <div className="min-h-screen flex flex-col">
         <Header />
@@ -164,22 +245,66 @@ const Admin = () => {
                 <Lock className="h-12 w-12 mx-auto mb-4 text-primary" />
                 <h1 className="text-3xl font-bold">Panel Admin</h1>
                 <p className="text-muted-foreground mt-2">
-                  Introduce la contraseña para acceder
+                  Inicia sesión para acceder
                 </p>
               </div>
               <form onSubmit={handleLogin} className="space-y-4">
+                <Input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="Email"
+                  className="border-2 border-primary"
+                  autoFocus
+                />
                 <Input
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Contraseña"
                   className="border-2 border-primary"
-                  autoFocus
                 />
-                <Button type="submit" className="w-full border-2 border-primary" variant="outline">
-                  Entrar
+                <Button 
+                  type="submit" 
+                  className="w-full border-2 border-primary" 
+                  variant="outline"
+                  disabled={authLoading}
+                >
+                  {authLoading ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Entrando...
+                    </>
+                  ) : (
+                    "Entrar"
+                  )}
                 </Button>
               </form>
+            </div>
+          </div>
+        </main>
+        <Footer />
+      </div>
+    );
+  }
+
+  // Not admin screen
+  if (!isAdmin) {
+    return (
+      <div className="min-h-screen flex flex-col">
+        <Header />
+        <main className="flex-grow flex items-center justify-center py-16 px-6">
+          <div className="w-full max-w-md text-center">
+            <div className="border-2 border-primary p-8 bg-card shadow-editorial">
+              <Lock className="h-12 w-12 mx-auto mb-4 text-destructive" />
+              <h1 className="text-2xl font-bold mb-2">Acceso Denegado</h1>
+              <p className="text-muted-foreground mb-6">
+                Tu cuenta no tiene permisos de administrador.
+              </p>
+              <Button onClick={handleLogout} variant="outline" className="border-2 border-primary">
+                <LogOut className="mr-2 h-4 w-4" />
+                Cerrar Sesión
+              </Button>
             </div>
           </div>
         </main>
@@ -194,15 +319,21 @@ const Admin = () => {
       
       <main className="flex-grow py-16 px-6">
         <div className="container mx-auto max-w-4xl">
-          <div className="text-center mb-12">
-            <div className="inline-block border-2 border-primary px-6 py-2 mb-4">
-              <p className="text-xs tracking-[0.3em] uppercase font-medium">
-                Panel de Administración
-              </p>
+          <div className="flex justify-between items-start mb-12">
+            <div>
+              <div className="inline-block border-2 border-primary px-6 py-2 mb-4">
+                <p className="text-xs tracking-[0.3em] uppercase font-medium">
+                  Panel de Administración
+                </p>
+              </div>
+              <h1 className="text-5xl font-bold tracking-tight">
+                Gestión de Tiras
+              </h1>
             </div>
-            <h1 className="text-5xl font-bold tracking-tight">
-              Gestión de Tiras
-            </h1>
+            <Button onClick={handleLogout} variant="outline" className="border-2 border-primary">
+              <LogOut className="mr-2 h-4 w-4" />
+              Salir
+            </Button>
           </div>
 
           {/* Upload form */}
