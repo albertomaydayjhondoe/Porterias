@@ -35,25 +35,25 @@ const Index = () => {
           id: "local-001",
           title: "El Nuevo Inquilino",
           image_url: "/Porterias/strips/strip-001.png",
-          publish_date: "2025-12-01"
+          publish_date: "2025-12-09"
         },
         {
           id: "local-002",
           title: "Paquetería Confusa",
           image_url: "/Porterias/strips/strip-002.png",
-          publish_date: "2025-12-02"
+          publish_date: "2025-12-08"
         },
         {
           id: "local-003",
           title: "Reunión de Consorcio",
           image_url: "/Porterias/strips/strip-003.png",
-          publish_date: "2025-12-03"
+          publish_date: "2025-12-07"
         },
         {
           id: "local-004",
           title: "La Conexión WiFi",
           image_url: "/Porterias/strips/strip-004.png",
-          publish_date: "2025-12-04"
+          publish_date: "2025-12-06"
         },
         {
           id: "local-005",
@@ -175,10 +175,10 @@ const Index = () => {
     } catch (error: any) {
       // Si falla completamente, usar datos locales completos
       const localStrips = [
-        { id: "local-001", title: "El Nuevo Inquilino", image_url: "/Porterias/strips/strip-001.png", publish_date: "2025-12-01" },
-        { id: "local-002", title: "Paquetería Confusa", image_url: "/Porterias/strips/strip-002.png", publish_date: "2025-12-02" },
-        { id: "local-003", title: "Reunión de Consorcio", image_url: "/Porterias/strips/strip-003.png", publish_date: "2025-12-03" },
-        { id: "local-004", title: "La Conexión WiFi", image_url: "/Porterias/strips/strip-004.png", publish_date: "2025-12-04" },
+        { id: "local-001", title: "El Nuevo Inquilino", image_url: "/Porterias/strips/strip-001.png", publish_date: "2025-12-09" },
+        { id: "local-002", title: "Paquetería Confusa", image_url: "/Porterias/strips/strip-002.png", publish_date: "2025-12-08" },
+        { id: "local-003", title: "Reunión de Consorcio", image_url: "/Porterias/strips/strip-003.png", publish_date: "2025-12-07" },
+        { id: "local-004", title: "La Conexión WiFi", image_url: "/Porterias/strips/strip-004.png", publish_date: "2025-12-06" },
         { id: "local-005", title: "El Ascensor Averiado", image_url: "/Porterias/strips/strip-005.png", publish_date: "2025-11-28" },
         { id: "local-006", title: "Horario de Basura", image_url: "/Porterias/strips/strip-006.png", publish_date: "2025-11-27" },
         { id: "local-007", title: "Fiesta Nocturna", image_url: "/Porterias/strips/strip-007.png", publish_date: "2025-11-26" },
