@@ -7,53 +7,8 @@ All colors MUST be HSL.
 */
 
 @layer base {
+  /* Dark theme - only theme */
   :root {
-    /* Editorial newspaper palette - Pure monochrome */
-    --background: 0 0% 100%;
-    --foreground: 0 0% 8%;
-    
-    --card: 0 0% 98%;
-    --card-foreground: 0 0% 8%;
-    
-    --popover: 0 0% 100%;
-    --popover-foreground: 0 0% 8%;
-    
-    /* Primary: Deep black for emphasis */
-    --primary: 0 0% 8%;
-    --primary-foreground: 0 0% 98%;
-    
-    /* Secondary: Light gray for subtle backgrounds */
-    --secondary: 0 0% 96%;
-    --secondary-foreground: 0 0% 8%;
-    
-    /* Muted: Mid-gray for secondary text */
-    --muted: 0 0% 93%;
-    --muted-foreground: 0 0% 45%;
-    
-    /* Accent: Slightly darker gray for hover states */
-    --accent: 0 0% 90%;
-    --accent-foreground: 0 0% 8%;
-    
-    --destructive: 0 84% 60%;
-    --destructive-foreground: 0 0% 98%;
-    
-    /* Borders: Sharp black lines */
-    --border: 0 0% 12%;
-    --input: 0 0% 88%;
-    --ring: 0 0% 8%;
-    
-    --radius: 0rem;
-    
-    /* Custom shadows for editorial depth */
-    --shadow-newspaper: 0 2px 8px hsla(0, 0%, 0%, 0.08);
-    --shadow-editorial: 0 4px 16px hsla(0, 0%, 0%, 0.12);
-    
-    /* Transitions */
-    --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  }
-
-  /* Dark theme as default */
-  html {
     --background: 222 20% 8%;
     --foreground: 40 100% 98%;
     
