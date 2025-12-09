@@ -26,16 +26,65 @@ const Index = () => {
 
   const loadStrips = async () => {
     try {
+      // Datos locales como respaldo
+      const localStrips = [
+        {
+          id: "local-001",
+          title: "El Nuevo Inquilino",
+          image_url: "./strips/strip-001.png",
+          publish_date: "2025-12-01"
+        },
+        {
+          id: "local-002",
+          title: "Paquetería Confusa",
+          image_url: "./strips/strip-002.png",
+          publish_date: "2025-12-02"
+        },
+        {
+          id: "local-003",
+          title: "Reunión de Consorcio",
+          image_url: "./strips/strip-003.png",
+          publish_date: "2025-12-03"
+        },
+        {
+          id: "local-004",
+          title: "La Conexión WiFi",
+          image_url: "./strips/strip-004.png",
+          publish_date: "2025-12-04"
+        }
+      ];
+
       const { data, error } = await supabase
         .from("comic_strips")
         .select("*")
         .order("publish_date", { ascending: false });
 
-      if (error) throw error;
-      setStrips(data || []);
+      if (error) {
+        // Si hay error con Supabase, usar datos locales
+        setStrips(localStrips);
+      } else {
+        // Combinar datos de Supabase con locales
+        const allStrips = [...(data || []), ...localStrips];
+        setStrips(allStrips.length > 0 ? allStrips : localStrips);
+      }
     } catch (error: any) {
-      toast.error("Error al cargar tiras");
-      console.error(error);
+      // Si falla completamente, usar datos locales
+      const localStrips = [
+        {
+          id: "local-001",
+          title: "El Nuevo Inquilino",
+          image_url: "./strips/strip-001.png",
+          publish_date: "2025-12-01"
+        },
+        {
+          id: "local-002",
+          title: "Paquetería Confusa",
+          image_url: "./strips/strip-002.png",
+          publish_date: "2025-12-02"
+        }
+      ];
+      setStrips(localStrips);
+      console.log("Usando datos locales:", error);
     } finally {
       setLoading(false);
     }
@@ -72,11 +121,7 @@ const Index = () => {
       
       <main className="flex-grow">
         {/* Latest strip */}
-        <StripViewer
-          imageUrl={latestStrip.image_url}
-          date={latestStrip.publish_date}
-          title={latestStrip.title || undefined}
-        />
+        <StripViewer strips={strips} />
 
         {/* Archive slider */}
         {strips.length > 1 && (
