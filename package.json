@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "prebuild": "python3 scripts/generate-og-image-dynamic.py",
     "build": "vite build",
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
