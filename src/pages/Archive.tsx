@@ -23,7 +23,7 @@ const Archive = () => {
       // Fetch strips from local JSON file
       const data = await fetchStrips();
       setStrips(data);
-    } catch (error: any) {
+    } catch (error) {
       toast.error("Error al cargar tiras");
       console.error("Error loading strips:", error);
     } finally {
