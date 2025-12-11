@@ -22,13 +22,32 @@ interface StripsData {
  */
 export async function fetchStrips(): Promise<ComicStrip[]> {
   try {
-    const response = await fetch('/data/strips.json');
+    // Fetch with timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+    
+    const response = await fetch('/data/strips.json', {
+      signal: controller.signal
+    });
+    
+    clearTimeout(timeoutId);
     
     if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      if (response.status === 404) {
+        throw new Error('Archivo strips.json no encontrado');
+      } else if (response.status >= 500) {
+        throw new Error('Error del servidor al cargar strips');
+      } else {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
     }
     
     const data: StripsData = await response.json();
+    
+    // Validate data structure
+    if (!data.strips || !Array.isArray(data.strips)) {
+      throw new Error('Formato de datos inválido');
+    }
     
     // Return strips sorted by date (most recent first)
     return data.strips.sort((a, b) => {
@@ -37,7 +56,15 @@ export async function fetchStrips(): Promise<ComicStrip[]> {
       return dateB.getTime() - dateA.getTime();
     });
   } catch (error) {
-    console.error('Error fetching strips:', error);
+    if (error instanceof Error) {
+      if (error.name === 'AbortError') {
+        console.error('Timeout al cargar strips');
+        throw new Error('Timeout al cargar strips');
+      }
+      console.error('Error fetching strips:', error.message);
+    } else {
+      console.error('Error fetching strips:', error);
+    }
     throw error;
   }
 }

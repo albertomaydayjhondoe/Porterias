@@ -60,7 +60,7 @@ async function saveStrips(data) {
 }
 
 function generateId() {
-  return Date.now().toString(36) + Math.random().toString(36).substr(2);
+  return Date.now().toString(36) + Math.random().toString(36).slice(2);
 }
 
 function detectMediaType(filename) {
@@ -214,7 +214,17 @@ async function addStrip(args) {
   log(`   Tipo: ${newStrip.media_type}`, 'cyan');
   
   // Intentar commit automático
-  const newContent = JSON.stringify(data, null, 2);
+  let newContent;
+  try {
+    newContent = JSON.stringify(data, null, 2);
+    // Validate JSON
+    JSON.parse(newContent);
+  } catch (error) {
+    log('❌ Error al serializar datos JSON:', 'red');
+    log('   No se hará commit automático', 'yellow');
+    return;
+  }
+  
   const commitMessage = `Agregar nueva tira: ${title}`;
   const committed = await commitToGitHub(commitMessage, newContent);
   
@@ -279,7 +289,17 @@ async function removeStrip(args) {
   log(`   Fecha: ${removed.publish_date}`, 'cyan');
   
   // Intentar commit automático
-  const newContent = JSON.stringify(data, null, 2);
+  let newContent;
+  try {
+    newContent = JSON.stringify(data, null, 2);
+    // Validate JSON
+    JSON.parse(newContent);
+  } catch (error) {
+    log('❌ Error al serializar datos JSON:', 'red');
+    log('   No se hará commit automático', 'yellow');
+    return;
+  }
+  
   const commitMessage = `Eliminar tira: ${removed.title}`;
   const committed = await commitToGitHub(commitMessage, newContent);
   
