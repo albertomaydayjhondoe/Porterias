@@ -21,6 +21,7 @@ const App = () => (
         <Routes>
           <Route path="/" element={<Index />} />
           <Route path="/archivo" element={<Archive />} />
+          {/* Porteria: Hidden from navigation menu but accessible via direct URL */}
           <Route path="/porteria" element={<Porteria />} />
           <Route path="/sobre-mi" element={<About />} />
           <Route path="/admin" element={<Admin />} />
