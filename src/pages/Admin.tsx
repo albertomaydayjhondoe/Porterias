@@ -5,8 +5,17 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Loader2, Upload, Trash2, Lock, LogOut } from "lucide-react";
+import { Loader2, Upload, Trash2, Lock, LogOut, Shield } from "lucide-react";
 import { User, Session } from "@supabase/supabase-js";
+import {
+  SECURITY_CONFIG,
+  sanitizeInput,
+  validateEmail,
+  validateDate,
+  validateFileType,
+  validateFileSize,
+  generateSecureFilename
+} from "@/lib/security";
 
 interface ComicStrip {
   id: string;
@@ -23,6 +32,8 @@ const Admin = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
+  const [loginAttempts, setLoginAttempts] = useState(0);
+  const [lockoutTime, setLockoutTime] = useState<number | null>(null);
   
   const [strips, setStrips] = useState<ComicStrip[]>([]);
   const [uploading, setUploading] = useState(false);
@@ -92,8 +103,29 @@ const Admin = () => {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     
+    // Check lockout
+    if (lockoutTime && Date.now() < lockoutTime) {
+      const remainingSeconds = Math.ceil((lockoutTime - Date.now()) / 1000);
+      toast.error(`Demasiados intentos. Espera ${remainingSeconds} segundos`);
+      return;
+    }
+    
+    // Input validation
     if (!email || !password) {
       toast.error("Introduce email y contraseña");
+      return;
+    }
+    
+    // Email format validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      toast.error("Email no válido");
+      return;
+    }
+    
+    // Password minimum length
+    if (password.length < 6) {
+      toast.error("Contraseña demasiado corta");
       return;
     }
 
@@ -101,14 +133,34 @@ const Admin = () => {
 
     try {
       const { error } = await supabase.auth.signInWithPassword({
-        email,
+        email: email.trim().toLowerCase(),
         password,
       });
 
-      if (error) throw error;
+      if (error) {
+        // Increment failed attempts
+        const newAttempts = loginAttempts + 1;
+        setLoginAttempts(newAttempts);
+        
+        // Lock after 5 failed attempts for 5 minutes
+        if (newAttempts >= 5) {
+          setLockoutTime(Date.now() + 5 * 60 * 1000);
+          toast.error("Demasiados intentos fallidos. Bloqueado por 5 minutos");
+        } else {
+          toast.error("Credenciales incorrectas");
+        }
+        throw error;
+      }
+      
+      // Reset on success
+      setLoginAttempts(0);
+      setLockoutTime(null);
       toast.success("Sesión iniciada");
+      
+      // Clear password from state
+      setPassword("");
     } catch (error: any) {
-      toast.error("Error: " + error.message);
+      // Error already handled above
     } finally {
       setAuthLoading(false);
     }
@@ -136,7 +188,25 @@ const Admin = () => {
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
-      setSelectedFile(e.target.files[0]);
+      const file = e.target.files[0];
+      
+      // Validate file type
+      const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+      if (!allowedTypes.includes(file.type)) {
+        toast.error("Solo se permiten imágenes (JPG, PNG, GIF, WebP)");
+        e.target.value = '';
+        return;
+      }
+      
+      // Validate file size (max 5MB)
+      const maxSize = 5 * 1024 * 1024; // 5MB
+      if (file.size > maxSize) {
+        toast.error("La imagen no debe superar 5MB");
+        e.target.value = '';
+        return;
+      }
+      
+      setSelectedFile(file);
     }
   };
 
@@ -147,14 +217,24 @@ const Admin = () => {
       toast.error("Selecciona una imagen");
       return;
     }
+    
+    // Sanitize title input
+    const sanitizedTitle = title.trim().slice(0, 200); // Max 200 chars
+    
+    // Validate date format
+    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+    if (!dateRegex.test(publishDate)) {
+      toast.error("Formato de fecha inválido");
+      return;
+    }
 
     setUploading(true);
 
     try {
       // Upload image to storage
-      const fileExt = selectedFile.name.split('.').pop();
-      const fileName = `${publishDate}-${Math.random()}.${fileExt}`;
-      const filePath = `${fileName}`;
+      const fileExt = selectedFile.name.split('.').pop()?.toLowerCase();
+      const sanitizedFileName = `${publishDate}-${Date.now()}.${fileExt}`;
+      const filePath = sanitizedFileName;
 
       const { error: uploadError } = await supabase.storage
         .from("comic-strips")
