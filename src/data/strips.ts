@@ -1,60 +1,83 @@
-// Comic strips data
-import strip001 from "@/assets/strips/strip-001.png";
-import strip002 from "@/assets/strips/strip-002.png";
-import strip003 from "@/assets/strips/strip-003.png";
-import strip004 from "@/assets/strips/strip-004.png";
-import strip005 from "@/assets/strips/strip-005.png";
-
+// Comic strips data - now loaded from JSON file
 export interface ComicStrip {
   id: string;
   imageUrl: string;
   date: string;
   title?: string;
+  media_type?: string;
+  video_url?: string;
+  audio_url?: string;
 }
 
-// Sample data - in production this would come from a backend/CMS
-export const comicStrips: ComicStrip[] = [
-  {
-    id: "001",
-    imageUrl: strip001,
-    date: "2025-02-01",
-    title: "El Nuevo Inquilino"
-  },
-  {
-    id: "002",
-    imageUrl: strip002,
-    date: "2025-02-02",
-    title: "Paquetería Confusa"
-  },
-  {
-    id: "003",
-    imageUrl: strip003,
-    date: "2025-02-03",
-    title: "Hora Punta"
-  },
-  {
-    id: "004",
-    imageUrl: strip004,
-    date: "2025-02-04",
-    title: "La Llave Olvidada"
-  },
-  {
-    id: "005",
-    imageUrl: strip005,
-    date: "2025-02-05",
-    title: "Día de Mudanza"
-  },
-];
+interface StripsData {
+  strips: Array<{
+    id: string;
+    title: string;
+    publish_date: string;
+    image_url: string;
+    media_type?: string;
+    video_url?: string;
+    audio_url?: string;
+  }>;
+}
 
-export const getTodayStrip = (): ComicStrip => {
-  // In production, this would fetch the latest strip from backend
-  return comicStrips[comicStrips.length - 1];
+let cachedStrips: ComicStrip[] | null = null;
+
+// Fetch strips from local JSON file
+export const fetchComicStrips = async (): Promise<ComicStrip[]> => {
+  if (cachedStrips) {
+    return cachedStrips;
+  }
+
+  try {
+    const response = await fetch('/data/strips.json');
+    if (!response.ok) {
+      throw new Error(`Failed to fetch strips: ${response.statusText}`);
+    }
+    
+    const data: StripsData = await response.json();
+    
+    // Transform to ComicStrip format
+    cachedStrips = data.strips.map(strip => ({
+      id: strip.id,
+      imageUrl: strip.image_url,
+      date: strip.publish_date,
+      title: strip.title,
+      media_type: strip.media_type,
+      video_url: strip.video_url,
+      audio_url: strip.audio_url,
+    }));
+    
+    return cachedStrips;
+  } catch (error) {
+    console.error('Error loading comic strips:', error);
+    // Return empty array as fallback
+    return [];
+  }
 };
 
-export const getStripById = (id: string): ComicStrip | undefined => {
-  return comicStrips.find(strip => strip.id === id);
+// Synchronous version for backwards compatibility (will be empty until data is loaded)
+export const comicStrips: ComicStrip[] = [];
+
+// Get today's strip (latest strip)
+export const getTodayStrip = async (): Promise<ComicStrip | null> => {
+  const strips = await fetchComicStrips();
+  return strips.length > 0 ? strips[0] : null;
 };
 
-export const getStripByIndex = (index: number): ComicStrip | undefined => {
-  return comicStrips[index];
+// Get strip by ID
+export const getStripById = async (id: string): Promise<ComicStrip | undefined> => {
+  const strips = await fetchComicStrips();
+  return strips.find(strip => strip.id === id);
+};
+
+// Get strip by index
+export const getStripByIndex = async (index: number): Promise<ComicStrip | undefined> => {
+  const strips = await fetchComicStrips();
+  return strips[index];
+};
+
+// Clear cache (useful for development/testing)
+export const clearStripsCache = () => {
+  cachedStrips = null;
 };
