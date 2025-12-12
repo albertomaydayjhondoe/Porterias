@@ -68,7 +68,7 @@ const Porteria = () => {
         <div className="max-w-7xl mx-auto">
           <div className="mb-8">
             <h1 className="text-4xl md:text-5xl font-bold mb-4">
-              Portería Multimedia
+              El Buzón
             </h1>
             <p className="text-lg text-muted-foreground">
               Contenido de video y multimedia de la portería

@@ -21,7 +21,7 @@ const Header = () => {
               to="/porteria" 
               className="text-sm uppercase tracking-wider font-medium hover:opacity-60 transition-opacity"
             >
-              Porteria
+              El Buzón
             </Link>
             <Link 
               to="/archivo" 
