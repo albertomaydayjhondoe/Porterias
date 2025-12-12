@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Loader2, Upload, Trash2, Lock, LogOut, Shield } from "lucide-react";
+import { Loader2, Upload, Trash2, Lock, LogOut, Shield, Download } from "lucide-react";
 import { User, Session } from "@supabase/supabase-js";
 import {
   SECURITY_CONFIG,
@@ -17,7 +17,6 @@ import {
   generateSecureFilename,
   isVideoFile
 } from "@/lib/security";
-import { uploadToGitHub, deleteFromGitHub } from "@/lib/github";
 
 interface ComicStrip {
   id: string;
@@ -233,33 +232,69 @@ const Admin = () => {
     try {
       // Determine media type
       const mediaType = isVideoFile(selectedFile) ? 'video' : 'image';
+      const fileExt = selectedFile.name.split('.').pop()?.toLowerCase();
+      const timestamp = Date.now();
+      const fileName = `strip-${publishDate}-${timestamp}.${fileExt}`;
 
-      // Upload to GitHub repository
-      const result = await uploadToGitHub(selectedFile, {
-        title: sanitizedTitle,
-        publishDate,
-        mediaType
-      });
+      // Download file with proper name for manual upload
+      const url = URL.createObjectURL(selectedFile);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
 
-      if (!result.success) {
-        throw new Error(result.error || 'Error al subir archivo');
-      }
+      // Load current strips.json to generate next ID
+      const response = await fetch('/Porterias/data/strips.json');
+      const currentStrips = await response.json();
+      const maxId = currentStrips.strips.reduce((max: number, s: any) => {
+        const num = parseInt(s.id.replace(/\D/g, ''));
+        return num > max ? num : max;
+      }, 0);
+      const newId = `strip-${String(maxId + 1).padStart(3, '0')}`;
 
-      toast.success(`${mediaType === 'video' ? 'Video' : 'Imagen'} subida exitosamente. Desplegando...`);
+      // Create JSON entry
+      const newStrip = {
+        id: newId,
+        title: sanitizedTitle || null,
+        image_url: mediaType === 'image' ? `/Porterias/strips/${fileName}` : null,
+        video_url: mediaType === 'video' ? `/Porterias/strips/${fileName}` : null,
+        media_type: mediaType,
+        publish_date: publishDate,
+      };
+
+      // Generate instructions
+      const instructions = `
+✅ Archivo descargado: ${fileName}
+
+📋 Pasos para completar:
+
+1. Mueve el archivo a:
+   public/strips/${fileName}
+
+2. Edita public/data/strips.json y añade al inicio del array "strips":
+${JSON.stringify(newStrip, null, 2)}
+
+3. Ejecuta en terminal:
+   git add public/strips/${fileName} public/data/strips.json
+   git commit -m "Add strip: ${sanitizedTitle || fileName}"
+   git push && npm run deploy
+
+O simplemente ejecuta:
+   npm run upload
+      `.trim();
+
+      // Copy to clipboard
+      await navigator.clipboard.writeText(instructions);
       
-      // Trigger GitHub Actions deployment (it will auto-deploy on push)
-      setTimeout(() => {
-        toast.info('Espera 1-2 minutos para que se actualice la página');
-      }, 2000);
+      toast.success("Archivo descargado e instrucciones copiadas al portapapeles");
+      alert(instructions);
 
       setTitle("");
       setPublishDate(new Date().toISOString().split('T')[0]);
       setSelectedFile(null);
-      
-      // Reload strips after a delay to allow GitHub to process
-      setTimeout(() => {
-        loadStrips();
-      }, 3000);
     } catch (error: any) {
       toast.error("Error: " + error.message);
     } finally {
@@ -271,19 +306,27 @@ const Admin = () => {
     if (!confirm("¿Eliminar esta tira?")) return;
 
     try {
-      // Delete from GitHub repository
-      const result = await deleteFromGitHub(strip);
+      // Extract filename from URL
+      const urlParts = (strip.image_url || '').split('/');
+      const fileName = urlParts[urlParts.length - 1];
 
-      if (!result.success) {
-        throw new Error(result.error || 'Error al eliminar archivo');
-      }
+      const instructions = `
+📋 Para eliminar la tira "${strip.title || strip.id}":
 
-      toast.success("Tira eliminada. Espera 1-2 minutos para actualización");
-      
-      // Reload strips after a delay
-      setTimeout(() => {
-        loadStrips();
-      }, 3000);
+1. Elimina el archivo:
+   rm public/strips/${fileName}
+
+2. Edita public/data/strips.json y elimina la entrada con id: "${strip.id}"
+
+3. Ejecuta:
+   git add public/strips/ public/data/strips.json
+   git commit -m "Remove strip: ${strip.id}"
+   git push && npm run deploy
+      `.trim();
+
+      await navigator.clipboard.writeText(instructions);
+      toast.success("Instrucciones copiadas al portapapeles");
+      alert(instructions);
     } catch (error: any) {
       toast.error("Error: " + error.message);
     }
