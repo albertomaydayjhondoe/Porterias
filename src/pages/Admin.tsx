@@ -17,6 +17,7 @@ import {
   generateSecureFilename,
   isVideoFile
 } from "@/lib/security";
+import { uploadToGitHub, deleteFromGitHub } from "@/lib/github";
 
 interface ComicStrip {
   id: string;
@@ -230,43 +231,35 @@ const Admin = () => {
     setUploading(true);
 
     try {
-      // Upload file to Supabase Storage
-      const fileExt = selectedFile.name.split('.').pop()?.toLowerCase();
-      const sanitizedFileName = `${publishDate}-${Date.now()}.${fileExt}`;
-      const filePath = sanitizedFileName;
-
-      const { error: uploadError } = await supabase.storage
-        .from("comic-strips")
-        .upload(filePath, selectedFile);
-
-      if (uploadError) throw uploadError;
-
-      // Get public URL
-      const { data: { publicUrl } } = supabase.storage
-        .from("comic-strips")
-        .getPublicUrl(filePath);
-
       // Determine media type
       const mediaType = isVideoFile(selectedFile) ? 'video' : 'image';
 
-      // Insert strip record
-      const { error: insertError } = await supabase
-        .from("comic_strips")
-        .insert({
-          title: sanitizedTitle || null,
-          image_url: publicUrl,
-          video_url: mediaType === 'video' ? publicUrl : null,
-          media_type: mediaType,
-          publish_date: publishDate,
-        });
+      // Upload to GitHub repository
+      const result = await uploadToGitHub(selectedFile, {
+        title: sanitizedTitle,
+        publishDate,
+        mediaType
+      });
 
-      if (insertError) throw insertError;
+      if (!result.success) {
+        throw new Error(result.error || 'Error al subir archivo');
+      }
 
-      toast.success(`${mediaType === 'video' ? 'Video' : 'Imagen'} subida exitosamente`);
+      toast.success(`${mediaType === 'video' ? 'Video' : 'Imagen'} subida exitosamente. Desplegando...`);
+      
+      // Trigger GitHub Actions deployment (it will auto-deploy on push)
+      setTimeout(() => {
+        toast.info('Espera 1-2 minutos para que se actualice la página');
+      }, 2000);
+
       setTitle("");
       setPublishDate(new Date().toISOString().split('T')[0]);
       setSelectedFile(null);
-      loadStrips();
+      
+      // Reload strips after a delay to allow GitHub to process
+      setTimeout(() => {
+        loadStrips();
+      }, 3000);
     } catch (error: any) {
       toast.error("Error: " + error.message);
     } finally {
@@ -278,27 +271,19 @@ const Admin = () => {
     if (!confirm("¿Eliminar esta tira?")) return;
 
     try {
-      // Extract file path from URL
-      const urlParts = strip.image_url.split('/');
-      const fileName = urlParts[urlParts.length - 1];
+      // Delete from GitHub repository
+      const result = await deleteFromGitHub(strip);
 
-      // Delete from storage
-      const { error: storageError } = await supabase.storage
-        .from("comic-strips")
-        .remove([fileName]);
+      if (!result.success) {
+        throw new Error(result.error || 'Error al eliminar archivo');
+      }
 
-      if (storageError) throw storageError;
-
-      // Delete from database
-      const { error: dbError } = await supabase
-        .from("comic_strips")
-        .delete()
-        .eq("id", strip.id);
-
-      if (dbError) throw dbError;
-
-      toast.success("Tira eliminada");
-      loadStrips();
+      toast.success("Tira eliminada. Espera 1-2 minutos para actualización");
+      
+      // Reload strips after a delay
+      setTimeout(() => {
+        loadStrips();
+      }, 3000);
     } catch (error: any) {
       toast.error("Error: " + error.message);
     }
