@@ -3,119 +3,50 @@ import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Loader2, Upload, Trash2, Lock, LogOut, Shield, Download } from "lucide-react";
-import { User, Session } from "@supabase/supabase-js";
+import { Loader2, Upload, Trash2, Lock, LogOut } from "lucide-react";
 import {
-  SECURITY_CONFIG,
-  sanitizeInput,
-  validateEmail,
-  validateDate,
   validateFileType,
   validateFileSize,
-  generateSecureFilename,
-  isVideoFile
+  isVideoFile,
+  SECURITY_CONFIG
 } from "@/lib/security";
 
-interface ComicStrip {
+// Simple local authentication - no Supabase required
+const ADMIN_PASSWORD = "porteria2024";
+
+interface LocalStrip {
   id: string;
   title: string | null;
   image_url: string | null;
   video_url: string | null;
-  media_type: string;
+  media_type: 'image' | 'video';
   publish_date: string;
+  file?: File;
 }
 
 const Admin = () => {
-  const [user, setUser] = useState<User | null>(null);
-  const [session, setSession] = useState<Session | null>(null);
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [email, setEmail] = useState("");
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [password, setPassword] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
   const [loginAttempts, setLoginAttempts] = useState(0);
   const [lockoutTime, setLockoutTime] = useState<number | null>(null);
   
-  const [strips, setStrips] = useState<ComicStrip[]>([]);
+  const [strips, setStrips] = useState<LocalStrip[]>([]);
   const [uploading, setUploading] = useState(false);
   const [title, setTitle] = useState("");
   const [publishDate, setPublishDate] = useState(new Date().toISOString().split('T')[0]);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
-  // Set up auth state listener
+  // Check for saved session
   useEffect(() => {
-    // If Supabase client is not available (e.g., GitHub Pages), skip auth
-    if (!supabase) {
-      setLoading(false);
-      return;
+    const savedAuth = sessionStorage.getItem('admin_auth');
+    if (savedAuth === 'true') {
+      setIsAuthenticated(true);
     }
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
-        setSession(session);
-        setUser(session?.user ?? null);
-        
-        // Check admin role with setTimeout to avoid deadlock
-        if (session?.user) {
-          setTimeout(() => {
-            checkAdminRole(session.user.id);
-          }, 0);
-        } else {
-          setIsAdmin(false);
-          setLoading(false);
-        }
-      }
-    );
-
-    // Check for existing session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        checkAdminRole(session.user.id);
-      } else {
-        setLoading(false);
-      }
-    });
-
-    return () => subscription.unsubscribe();
   }, []);
 
-  // Load strips when admin is confirmed
-  useEffect(() => {
-    if (isAdmin) {
-      loadStrips();
-    }
-  }, [isAdmin]);
-
-  const checkAdminRole = async (userId: string) => {
-    if (!supabase) {
-      setIsAdmin(false);
-      setLoading(false);
-      return;
-    }
-    
-    try {
-      const { data, error } = await supabase
-        .from("user_roles")
-        .select("role")
-        .eq("user_id", userId)
-        .eq("role", "admin")
-        .maybeSingle();
-
-      if (error) throw error;
-      setIsAdmin(!!data);
-    } catch (error: any) {
-      console.error("Error checking admin role:", error.message);
-      setIsAdmin(false);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleLogin = async (e: React.FormEvent) => {
+  const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     
     // Check lockout
@@ -124,106 +55,55 @@ const Admin = () => {
       toast.error(`Demasiados intentos. Espera ${remainingSeconds} segundos`);
       return;
     }
-    
-    // Input validation
-    if (!email || !password) {
-      toast.error("Introduce email y contraseña");
-      return;
-    }
-    
-    // Email format validation
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      toast.error("Email no válido");
-      return;
-    }
-    
-    // Password minimum length
-    if (password.length < 6) {
-      toast.error("Contraseña demasiado corta");
+
+    if (!password) {
+      toast.error("Introduce la contraseña");
       return;
     }
 
     setAuthLoading(true);
 
-    try {
-      if (!supabase) {
-        toast.error("Sistema de autenticación no disponible");
-        return;
-      }
-      
-      const { error } = await supabase.auth.signInWithPassword({
-        email: email.trim().toLowerCase(),
-        password,
-      });
-
-      if (error) {
-        // Increment failed attempts
+    // Simple password check
+    setTimeout(() => {
+      if (password === ADMIN_PASSWORD) {
+        setIsAuthenticated(true);
+        sessionStorage.setItem('admin_auth', 'true');
+        setLoginAttempts(0);
+        setLockoutTime(null);
+        toast.success("Acceso concedido");
+        setPassword("");
+      } else {
         const newAttempts = loginAttempts + 1;
         setLoginAttempts(newAttempts);
         
-        // Lock after 5 failed attempts for 5 minutes
         if (newAttempts >= 5) {
           setLockoutTime(Date.now() + 5 * 60 * 1000);
-          toast.error("Demasiados intentos fallidos. Bloqueado por 5 minutos");
+          toast.error("Demasiados intentos. Bloqueado por 5 minutos");
         } else {
-          toast.error("Credenciales incorrectas");
+          toast.error("Contraseña incorrecta");
         }
-        throw error;
       }
-      
-      // Reset on success
-      setLoginAttempts(0);
-      setLockoutTime(null);
-      toast.success("Sesión iniciada");
-      
-      // Clear password from state
-      setPassword("");
-    } catch (error: any) {
-      // Error already handled above
-    } finally {
       setAuthLoading(false);
-    }
+    }, 500);
   };
 
-  const handleLogout = async () => {
-    if (!supabase) return;
-    await supabase.auth.signOut();
-    setIsAdmin(false);
+  const handleLogout = () => {
+    setIsAuthenticated(false);
+    sessionStorage.removeItem('admin_auth');
+    setStrips([]);
     toast.success("Sesión cerrada");
-  };
-
-  const loadStrips = async () => {
-    if (!supabase) {
-      setStrips([]);
-      return;
-    }
-    
-    try {
-      const { data, error } = await supabase
-        .from("comic_strips")
-        .select("*")
-        .order("publish_date", { ascending: false });
-
-      if (error) throw error;
-      setStrips(data || []);
-    } catch (error: any) {
-      toast.error("Error al cargar tiras: " + error.message);
-    }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
       
-      // Validate file type (images and videos)
       if (!validateFileType(file)) {
         toast.error("Solo se permiten imágenes (JPG, PNG, GIF, WebP) y videos (MP4, WebM, OGG)");
         e.target.value = '';
         return;
       }
       
-      // Validate file size (max 50MB)
       if (!validateFileSize(file)) {
         toast.error(`El archivo no debe superar ${SECURITY_CONFIG.MAX_FILE_SIZE_MB}MB`);
         e.target.value = '';
@@ -242,15 +122,6 @@ const Admin = () => {
       return;
     }
 
-    if (!supabase) {
-      toast.error("Sistema de almacenamiento no disponible");
-      return;
-    }
-    
-    // Sanitize title input
-    const sanitizedTitle = title.trim().slice(0, 200);
-    
-    // Validate date format
     const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
     if (!dateRegex.test(publishDate)) {
       toast.error("Formato de fecha inválido");
@@ -260,119 +131,114 @@ const Admin = () => {
     setUploading(true);
 
     try {
-      // Determine media type
       const mediaType = isVideoFile(selectedFile) ? 'video' : 'image';
       const fileExt = selectedFile.name.split('.').pop()?.toLowerCase();
       const timestamp = Date.now();
       const fileName = `${mediaType}-${publishDate}-${timestamp}.${fileExt}`;
 
-      // Upload to Supabase Storage
-      const { data: uploadData, error: uploadError } = await supabase.storage
-        .from('comic-strips')
-        .upload(fileName, selectedFile, {
-          cacheControl: '3600',
-          upsert: false
-        });
+      // Download file for manual upload
+      const url = URL.createObjectURL(selectedFile);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
 
-      if (uploadError) throw uploadError;
+      // Generate next ID
+      const maxId = strips.reduce((max, s) => {
+        const num = parseInt(s.id.replace(/\D/g, '') || '0');
+        return num > max ? num : max;
+      }, 0);
+      const newId = `strip-${String(maxId + 1).padStart(3, '0')}`;
 
-      // Get public URL
-      const { data: urlData } = supabase.storage
-        .from('comic-strips')
-        .getPublicUrl(fileName);
+      const sanitizedTitle = title.trim().slice(0, 200);
 
-      const publicUrl = urlData.publicUrl;
-
-      // Insert into database
-      const insertData: {
-        title: string | null;
-        publish_date: string;
-        media_type: 'image' | 'video';
-        image_url?: string;
-        video_url?: string;
-      } = {
+      // Create local entry
+      const newStrip: LocalStrip = {
+        id: newId,
         title: sanitizedTitle || null,
-        publish_date: publishDate,
+        image_url: mediaType === 'image' ? `/Porterias/strips/${fileName}` : null,
+        video_url: mediaType === 'video' ? `/Porterias/strips/${fileName}` : null,
         media_type: mediaType,
+        publish_date: publishDate,
+        file: selectedFile,
       };
 
-      if (mediaType === 'video') {
-        insertData.video_url = publicUrl;
-      } else {
-        insertData.image_url = publicUrl;
-      }
+      // Add to local list
+      setStrips(prev => [newStrip, ...prev]);
 
-      const { error: insertError } = await supabase
-        .from('comic_strips')
-        .insert(insertData);
+      // Generate instructions
+      const instructions = `
+✅ Archivo descargado: ${fileName}
 
-      if (insertError) throw insertError;
+📋 Pasos para completar:
 
+1. Mueve el archivo a:
+   public/strips/${fileName}
+
+2. Edita public/data/strips.json y añade al inicio del array "strips":
+${JSON.stringify({
+  id: newId,
+  title: sanitizedTitle || null,
+  image_url: mediaType === 'image' ? `/Porterias/strips/${fileName}` : null,
+  video_url: mediaType === 'video' ? `/Porterias/strips/${fileName}` : null,
+  media_type: mediaType,
+  publish_date: publishDate,
+}, null, 2)}
+
+3. Ejecuta:
+   git add public/strips/${fileName} public/data/strips.json
+   git commit -m "Add ${mediaType}: ${sanitizedTitle || fileName}"
+   git push
+      `.trim();
+
+      await navigator.clipboard.writeText(instructions);
+      
       toast.success(
         mediaType === 'video' 
-          ? "Video subido → aparecerá en la página principal" 
-          : "Imagen subida → aparecerá en el archivo (buzón)"
+          ? "Video descargado → Instrucciones copiadas" 
+          : "Imagen descargada → Instrucciones copiadas"
       );
 
       setTitle("");
       setPublishDate(new Date().toISOString().split('T')[0]);
       setSelectedFile(null);
-      loadStrips();
+      
+      // Reset file input
+      const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+      if (fileInput) fileInput.value = '';
+      
     } catch (error: any) {
-      console.error("Error uploading:", error);
       toast.error("Error: " + error.message);
     } finally {
       setUploading(false);
     }
   };
 
-  const handleDelete = async (strip: ComicStrip) => {
-    if (!confirm("¿Eliminar esta tira?")) return;
-    if (!supabase) return;
+  const handleDelete = (strip: LocalStrip) => {
+    if (!confirm("¿Eliminar esta entrada?")) return;
+    
+    setStrips(prev => prev.filter(s => s.id !== strip.id));
+    
+    const mediaUrl = strip.video_url || strip.image_url || '';
+    const fileName = mediaUrl.split('/').pop();
 
-    try {
-      // Extract filename from URL
-      const mediaUrl = strip.video_url || strip.image_url || '';
-      const urlParts = mediaUrl.split('/');
-      const fileName = urlParts[urlParts.length - 1];
+    const instructions = `
+📋 Para eliminar "${strip.title || strip.id}":
 
-      // Delete from storage
-      if (fileName) {
-        await supabase.storage
-          .from('comic-strips')
-          .remove([fileName]);
-      }
+1. Elimina: public/strips/${fileName}
+2. Edita public/data/strips.json y elimina la entrada con id: "${strip.id}"
+3. git add . && git commit -m "Remove ${strip.id}" && git push
+    `.trim();
 
-      // Delete from database
-      const { error } = await supabase
-        .from('comic_strips')
-        .delete()
-        .eq('id', strip.id);
-
-      if (error) throw error;
-
-      toast.success("Tira eliminada");
-      loadStrips();
-    } catch (error: any) {
-      toast.error("Error al eliminar: " + error.message);
-    }
+    navigator.clipboard.writeText(instructions);
+    toast.success("Instrucciones copiadas al portapapeles");
   };
 
-  // Loading state
-  if (loading) {
-    return (
-      <div className="min-h-screen flex flex-col">
-        <Header />
-        <main className="flex-grow flex items-center justify-center">
-          <Loader2 className="h-8 w-8 animate-spin" />
-        </main>
-        <Footer />
-      </div>
-    );
-  }
-
   // Login screen
-  if (!user) {
+  if (!isAuthenticated) {
     return (
       <div className="min-h-screen flex flex-col">
         <Header />
@@ -383,66 +249,33 @@ const Admin = () => {
                 <Lock className="h-12 w-12 mx-auto mb-4 text-primary" />
                 <h1 className="text-3xl font-bold">Panel Admin</h1>
                 <p className="text-muted-foreground mt-2">
-                  Inicia sesión para acceder
+                  Introduce la contraseña para acceder
                 </p>
               </div>
               <form onSubmit={handleLogin} className="space-y-4">
-                <Input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="Email"
-                  className="border-2 border-primary"
-                  autoFocus
-                />
                 <Input
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Contraseña"
                   className="border-2 border-primary"
+                  autoFocus
                 />
                 <Button 
                   type="submit" 
-                  className="w-full border-2 border-primary" 
-                  variant="outline"
+                  className="w-full" 
                   disabled={authLoading}
                 >
                   {authLoading ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Entrando...
+                      Verificando...
                     </>
                   ) : (
                     "Entrar"
                   )}
                 </Button>
               </form>
-            </div>
-          </div>
-        </main>
-        <Footer />
-      </div>
-    );
-  }
-
-  // Not admin screen
-  if (!isAdmin) {
-    return (
-      <div className="min-h-screen flex flex-col">
-        <Header />
-        <main className="flex-grow flex items-center justify-center py-16 px-6">
-          <div className="w-full max-w-md text-center">
-            <div className="border-2 border-primary p-8 bg-card shadow-editorial">
-              <Lock className="h-12 w-12 mx-auto mb-4 text-destructive" />
-              <h1 className="text-2xl font-bold mb-2">Acceso Denegado</h1>
-              <p className="text-muted-foreground mb-6">
-                Tu cuenta no tiene permisos de administrador.
-              </p>
-              <Button onClick={handleLogout} variant="outline" className="border-2 border-primary">
-                <LogOut className="mr-2 h-4 w-4" />
-                Cerrar Sesión
-              </Button>
             </div>
           </div>
         </main>
@@ -465,8 +298,11 @@ const Admin = () => {
                 </p>
               </div>
               <h1 className="text-5xl font-bold tracking-tight">
-                Gestión de Tiras
+                Gestión de Contenido
               </h1>
+              <p className="text-muted-foreground mt-2">
+                Videos → Página Principal | Imágenes → Buzón/Archivo
+              </p>
             </div>
             <Button onClick={handleLogout} variant="outline" className="border-2 border-primary">
               <LogOut className="mr-2 h-4 w-4" />
@@ -476,7 +312,7 @@ const Admin = () => {
 
           {/* Upload form */}
           <div className="border-2 border-primary p-8 bg-card shadow-editorial mb-12">
-            <h2 className="text-2xl font-bold mb-6">Subir Nueva Tira</h2>
+            <h2 className="text-2xl font-bold mb-6">Subir Nuevo Contenido</h2>
             <form onSubmit={handleUpload} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium mb-2 uppercase tracking-wider">
@@ -486,7 +322,7 @@ const Admin = () => {
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
                   className="border-2 border-primary"
-                  placeholder="El Nuevo Inquilino"
+                  placeholder="Nombre del contenido"
                 />
               </div>
 
@@ -505,7 +341,7 @@ const Admin = () => {
 
               <div>
                 <label className="block text-sm font-medium mb-2 uppercase tracking-wider">
-                  Imagen o Video de la Tira
+                  Archivo (Imagen o Video)
                 </label>
                 <Input
                   type="file"
@@ -514,102 +350,107 @@ const Admin = () => {
                   className="border-2 border-primary"
                   required
                 />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Videos (MP4, WebM) → Página principal | Imágenes (JPG, PNG) → Archivo
+                </p>
               </div>
 
               <Button
                 type="submit"
                 disabled={uploading}
-                className="w-full border-2 border-primary"
-                variant="outline"
+                className="w-full"
               >
                 {uploading ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Subiendo...
+                    Procesando...
                   </>
                 ) : (
                   <>
                     <Upload className="mr-2 h-4 w-4" />
-                    Subir Tira
+                    Subir y Descargar
                   </>
                 )}
               </Button>
             </form>
           </div>
 
-          {/* Strips list */}
-          <div className="space-y-6">
-            <h2 className="text-2xl font-bold">Contenido Publicado</h2>
-            
-            {/* Videos section */}
-            <div className="space-y-4">
-              <h3 className="text-lg font-semibold text-primary border-b border-primary pb-2">
-                📹 Videos (Página Principal)
-              </h3>
-              {strips.filter(s => s.media_type === 'video').map((strip) => (
-                <div
-                  key={strip.id}
-                  className="border-2 border-primary p-4 bg-card shadow-newspaper flex gap-4 items-center"
-                >
-                  <div className="w-24 h-16 bg-muted flex items-center justify-center rounded overflow-hidden">
-                    <video src={strip.video_url || ''} className="w-full h-full object-cover" muted />
-                  </div>
-                  <div className="flex-grow">
-                    <h4 className="font-bold">{strip.title || "Sin título"}</h4>
-                    <p className="text-xs text-muted-foreground">
-                      {new Date(strip.publish_date).toLocaleDateString('es-ES')}
-                    </p>
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={() => handleDelete(strip)}
-                    className="border-destructive text-destructive hover:bg-destructive hover:text-destructive-foreground"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
+          {/* Uploaded items this session */}
+          {strips.length > 0 && (
+            <div className="space-y-6">
+              <h2 className="text-2xl font-bold">Subidos esta sesión</h2>
+              
+              {/* Videos */}
+              {strips.filter(s => s.media_type === 'video').length > 0 && (
+                <div className="space-y-4">
+                  <h3 className="text-lg font-semibold text-primary border-b border-primary pb-2">
+                    📹 Videos (Página Principal)
+                  </h3>
+                  {strips.filter(s => s.media_type === 'video').map((strip) => (
+                    <div key={strip.id} className="border-2 border-primary p-4 bg-card flex gap-4 items-center">
+                      <div className="w-20 h-14 bg-muted rounded flex items-center justify-center text-xs">
+                        VIDEO
+                      </div>
+                      <div className="flex-grow">
+                        <h4 className="font-bold">{strip.title || "Sin título"}</h4>
+                        <p className="text-xs text-muted-foreground">{strip.publish_date}</p>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        onClick={() => handleDelete(strip)}
+                        className="border-destructive text-destructive hover:bg-destructive hover:text-destructive-foreground"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))}
                 </div>
-              ))}
-              {strips.filter(s => s.media_type === 'video').length === 0 && (
-                <p className="text-sm text-muted-foreground py-4 text-center">No hay videos</p>
               )}
-            </div>
 
-            {/* Images section */}
-            <div className="space-y-4">
-              <h3 className="text-lg font-semibold text-primary border-b border-primary pb-2">
-                🖼️ Imágenes (Archivo/Buzón)
-              </h3>
-              {strips.filter(s => s.media_type === 'image').map((strip) => (
-                <div
-                  key={strip.id}
-                  className="border-2 border-primary p-4 bg-card shadow-newspaper flex gap-4 items-center"
-                >
-                  <img
-                    src={strip.image_url || ''}
-                    alt={strip.title || "Tira"}
-                    className="w-24 h-16 object-cover rounded"
-                  />
-                  <div className="flex-grow">
-                    <h4 className="font-bold">{strip.title || "Sin título"}</h4>
-                    <p className="text-xs text-muted-foreground">
-                      {new Date(strip.publish_date).toLocaleDateString('es-ES')}
-                    </p>
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={() => handleDelete(strip)}
-                    className="border-destructive text-destructive hover:bg-destructive hover:text-destructive-foreground"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
+              {/* Images */}
+              {strips.filter(s => s.media_type === 'image').length > 0 && (
+                <div className="space-y-4">
+                  <h3 className="text-lg font-semibold text-primary border-b border-primary pb-2">
+                    🖼️ Imágenes (Archivo/Buzón)
+                  </h3>
+                  {strips.filter(s => s.media_type === 'image').map((strip) => (
+                    <div key={strip.id} className="border-2 border-primary p-4 bg-card flex gap-4 items-center">
+                      {strip.file && (
+                        <img
+                          src={URL.createObjectURL(strip.file)}
+                          alt={strip.title || "Imagen"}
+                          className="w-20 h-14 object-cover rounded"
+                        />
+                      )}
+                      <div className="flex-grow">
+                        <h4 className="font-bold">{strip.title || "Sin título"}</h4>
+                        <p className="text-xs text-muted-foreground">{strip.publish_date}</p>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        onClick={() => handleDelete(strip)}
+                        className="border-destructive text-destructive hover:bg-destructive hover:text-destructive-foreground"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))}
                 </div>
-              ))}
-              {strips.filter(s => s.media_type === 'image').length === 0 && (
-                <p className="text-sm text-muted-foreground py-4 text-center">No hay imágenes</p>
               )}
             </div>
+          )}
+
+          {/* Instructions */}
+          <div className="mt-12 border-2 border-dashed border-muted-foreground/30 p-6 rounded">
+            <h3 className="font-bold mb-2">📋 Cómo funciona:</h3>
+            <ol className="text-sm text-muted-foreground space-y-1 list-decimal list-inside">
+              <li>Sube un archivo (video o imagen)</li>
+              <li>El archivo se descargará automáticamente</li>
+              <li>Las instrucciones se copian al portapapeles</li>
+              <li>Sigue los pasos para añadirlo al repositorio</li>
+            </ol>
           </div>
         </div>
       </main>
