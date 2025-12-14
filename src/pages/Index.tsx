@@ -3,201 +3,47 @@ import { useNavigate } from "react-router-dom";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import StripViewer from "@/components/StripViewer";
-import ArchiveSlider from "@/components/ArchiveSlider";
 import { supabase } from "@/integrations/supabase/client";
-import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 
 interface ComicStrip {
   id: string;
   title: string | null;
-  image_url: string;
+  image_url: string | null;
+  video_url: string | null;
+  media_type: string;
   publish_date: string;
-  media_type?: 'image' | 'video' | 'audio';
-  video_url?: string;
-  audio_url?: string;
 }
 
 const Index = () => {
   const navigate = useNavigate();
-  const [strips, setStrips] = useState<ComicStrip[]>([]);
+  const [videos, setVideos] = useState<ComicStrip[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    loadStrips();
+    loadVideos();
   }, []);
 
-  const loadStrips = async () => {
+  const loadVideos = async () => {
     try {
-      // Datos locales como respaldo
-      const localStrips = [
-        {
-          id: "local-020",
-          title: "Primera Tira",
-          image_url: "/Porterias/strips/strip-020.png",
-          publish_date: "2025-12-09"
-        },
-        {
-          id: "local-019",
-          title: "El Misterio del 3º B",
-          image_url: "/Porterias/strips/strip-019.png",
-          publish_date: "2025-12-08"
-        },
-        {
-          id: "local-018",
-          title: "Inspección Sanitaria",
-          image_url: "/Porterias/strips/strip-018.png",
-          publish_date: "2025-12-07"
-        },
-        {
-          id: "local-017",
-          title: "La Llave Perdida",
-          image_url: "/Porterias/strips/strip-017.png",
-          publish_date: "2025-12-06"
-        },
-        {
-          id: "local-016",
-          title: "Visita del Técnico",
-          image_url: "/Porterias/strips/strip-016.png",
-          publish_date: "2025-12-05"
-        },
-        {
-          id: "local-015",
-          title: "Día de Mudanza",
-          image_url: "/Porterias/strips/strip-015.png",
-          publish_date: "2025-12-04"
-        },
-        {
-          id: "local-014",
-          title: "Buzón Atascado",
-          image_url: "/Porterias/strips/strip-014.png",
-          publish_date: "2025-12-03"
-        },
-        {
-          id: "local-013",
-          title: "Navidad Anticipada",
-          image_url: "/Porterias/strips/strip-013.png",
-          publish_date: "2025-12-02"
-        },
-        {
-          id: "local-012",
-          title: "La Vecina Chismosa",
-          image_url: "/Porterias/strips/strip-012.png",
-          publish_date: "2025-12-01"
-        },
-        {
-          id: "local-011",
-          title: "Apagón General",
-          image_url: "/Porterias/strips/strip-011.png",
-          publish_date: "2025-11-30"
-        },
-        {
-          id: "local-010",
-          title: "El Cartero Sustituto",
-          image_url: "/Porterias/strips/strip-010.png",
-          publish_date: "2025-11-29"
-        },
-        {
-          id: "local-009",
-          title: "Reforma en el Ático",
-          image_url: "/Porterias/strips/strip-009.png",
-          publish_date: "2025-11-28"
-        },
-        {
-          id: "local-008",
-          title: "El Perro del 5º",
-          image_url: "/Porterias/strips/strip-008.png",
-          publish_date: "2025-11-27"
-        },
-        {
-          id: "local-007",
-          title: "Fiesta Nocturna",
-          image_url: "/Porterias/strips/strip-007.png",
-          publish_date: "2025-11-26"
-        },
-        {
-          id: "local-006",
-          title: "Horario de Basura",
-          image_url: "/Porterias/strips/strip-006.png",
-          publish_date: "2025-11-25"
-        },
-        {
-          id: "local-005",
-          title: "El Ascensor Averiado",
-          image_url: "/Porterias/strips/strip-005.png",
-          publish_date: "2025-11-24"
-        },
-        {
-          id: "local-004",
-          title: "La Conexión WiFi",
-          image_url: "/Porterias/strips/strip-004.png",
-          publish_date: "2025-11-23"
-        },
-        {
-          id: "local-003",
-          title: "Reunión de Consorcio",
-          image_url: "/Porterias/strips/strip-003.png",
-          publish_date: "2025-11-22"
-        },
-        {
-          id: "local-002",
-          title: "Paquetería Confusa",
-          image_url: "/Porterias/strips/strip-002.png",
-          publish_date: "2025-11-21"
-        },
-        {
-          id: "local-001",
-          title: "El Nuevo Inquilino",
-          image_url: "/Porterias/strips/strip-001.png",
-          publish_date: "2025-11-20"
-        }
-      ];
-
-      // Si no hay cliente de Supabase (GitHub Pages), usar solo datos locales
       if (!supabase) {
-        setStrips(localStrips);
+        setVideos([]);
+        setLoading(false);
         return;
       }
 
+      // Load only videos for homepage
       const { data, error } = await supabase
         .from("comic_strips")
         .select("*")
+        .eq("media_type", "video")
         .order("publish_date", { ascending: false });
 
-      if (error) {
-        // Si hay error con Supabase, usar datos locales
-        setStrips(localStrips);
-      } else {
-        // Combinar datos de Supabase con locales
-        const allStrips = [...(data || []), ...localStrips];
-        setStrips(allStrips.length > 0 ? allStrips : localStrips);
-      }
+      if (error) throw error;
+      setVideos(data || []);
     } catch (error: any) {
-      // Si falla completamente, usar datos locales completos
-      const localStrips = [
-        { id: "local-020", title: "Primera Tira", image_url: "/Porterias/strips/strip-020.png", publish_date: "2025-12-09" },
-        { id: "local-019", title: "El Misterio del 3º B", image_url: "/Porterias/strips/strip-019.png", publish_date: "2025-12-08" },
-        { id: "local-018", title: "Inspección Sanitaria", image_url: "/Porterias/strips/strip-018.png", publish_date: "2025-12-07" },
-        { id: "local-017", title: "La Llave Perdida", image_url: "/Porterias/strips/strip-017.png", publish_date: "2025-12-06" },
-        { id: "local-016", title: "Visita del Técnico", image_url: "/Porterias/strips/strip-016.png", publish_date: "2025-12-05" },
-        { id: "local-015", title: "Día de Mudanza", image_url: "/Porterias/strips/strip-015.png", publish_date: "2025-12-04" },
-        { id: "local-014", title: "Buzón Atascado", image_url: "/Porterias/strips/strip-014.png", publish_date: "2025-12-03" },
-        { id: "local-013", title: "Navidad Anticipada", image_url: "/Porterias/strips/strip-013.png", publish_date: "2025-12-02" },
-        { id: "local-012", title: "La Vecina Chismosa", image_url: "/Porterias/strips/strip-012.png", publish_date: "2025-12-01" },
-        { id: "local-011", title: "Apagón General", image_url: "/Porterias/strips/strip-011.png", publish_date: "2025-11-30" },
-        { id: "local-010", title: "El Cartero Sustituto", image_url: "/Porterias/strips/strip-010.png", publish_date: "2025-11-29" },
-        { id: "local-009", title: "Reforma en el Ático", image_url: "/Porterias/strips/strip-009.png", publish_date: "2025-11-28" },
-        { id: "local-008", title: "El Perro del 5º", image_url: "/Porterias/strips/strip-008.png", publish_date: "2025-11-27" },
-        { id: "local-007", title: "Fiesta Nocturna", image_url: "/Porterias/strips/strip-007.png", publish_date: "2025-11-26" },
-        { id: "local-006", title: "Horario de Basura", image_url: "/Porterias/strips/strip-006.png", publish_date: "2025-11-25" },
-        { id: "local-005", title: "El Ascensor Averiado", image_url: "/Porterias/strips/strip-005.png", publish_date: "2025-11-24" },
-        { id: "local-004", title: "La Conexión WiFi", image_url: "/Porterias/strips/strip-004.png", publish_date: "2025-11-23" },
-        { id: "local-003", title: "Reunión de Consorcio", image_url: "/Porterias/strips/strip-003.png", publish_date: "2025-11-22" },
-        { id: "local-002", title: "Paquetería Confusa", image_url: "/Porterias/strips/strip-002.png", publish_date: "2025-11-21" },
-        { id: "local-001", title: "El Nuevo Inquilino", image_url: "/Porterias/strips/strip-001.png", publish_date: "2025-11-20" }
-      ];
-      setStrips(localStrips);
-      console.log("Usando datos locales:", error);
+      console.error("Error loading videos:", error);
+      setVideos([]);
     } finally {
       setLoading(false);
     }
@@ -211,14 +57,22 @@ const Index = () => {
     );
   }
 
-  if (strips.length === 0) {
+  if (videos.length === 0) {
     return (
       <div className="min-h-screen flex flex-col">
         <Header />
         <main className="flex-grow flex items-center justify-center">
-          <div className="text-center">
-            <h2 className="text-3xl font-bold mb-4">No hay tiras publicadas aún</h2>
-            <p className="text-muted-foreground">Vuelve pronto para ver el contenido</p>
+          <div className="text-center px-6">
+            <h2 className="text-3xl font-bold mb-4">No hay videos publicados aún</h2>
+            <p className="text-muted-foreground mb-6">
+              Los videos aparecerán aquí cuando se suban desde el panel de administración
+            </p>
+            <button
+              onClick={() => navigate('/archivo')}
+              className="inline-block border-2 border-primary px-8 py-3 font-medium hover:bg-primary hover:text-primary-foreground transition-colors"
+            >
+              Ver Archivo de Imágenes
+            </button>
           </div>
         </main>
         <Footer />
@@ -226,45 +80,38 @@ const Index = () => {
     );
   }
 
-  const latestStrip = strips[0];
+  const latestVideo = videos[0];
 
   return (
     <div className="min-h-screen flex flex-col">
       <Header />
       
       <main className="flex-grow">
-        {/* Latest strip */}
-        <StripViewer strips={strips} />
+        {/* Latest video */}
+        <StripViewer strips={videos.map(v => ({
+          id: v.id,
+          title: v.title,
+          image_url: v.image_url || '',
+          video_url: v.video_url || undefined,
+          media_type: 'video' as const,
+          publish_date: v.publish_date,
+        }))} />
 
-        {/* Archive slider */}
-        {strips.length > 1 && (
-          <ArchiveSlider
-            strips={strips.slice(1).map(s => ({
-              id: s.id,
-              imageUrl: s.image_url,
-              date: s.publish_date,
-              title: s.title || undefined,
-              mediaType: s.media_type,
-            }))}
-            onStripClick={(id) => navigate(`/archivo`)}
-          />
-        )}
-
-        {/* Call to action */}
+        {/* Call to action for archive */}
         <section className="py-16 px-6 text-center">
           <div className="container mx-auto max-w-2xl">
             <div className="border-2 border-primary p-12 bg-card shadow-editorial">
               <h3 className="text-3xl font-bold mb-4">
-                No te pierdas ninguna edición
+                Explora el Buzón
               </h3>
               <p className="text-muted-foreground mb-6">
-                Visita el archivo completo para recorrer todas las tiras desde el principio
+                Visita el archivo completo para ver todas las imágenes y tiras publicadas
               </p>
               <button
                 onClick={() => navigate('/archivo')}
                 className="inline-block border-2 border-primary px-8 py-3 font-medium hover:bg-primary hover:text-primary-foreground transition-colors"
               >
-                Ver Archivo Completo
+                Ver Archivo de Imágenes
               </button>
             </div>
           </div>

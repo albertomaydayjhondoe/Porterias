@@ -18,16 +18,16 @@ const Header = () => {
           
           <nav className="hidden md:flex items-center gap-8">
             <Link 
-              to="/porteria" 
+              to="/" 
               className="text-sm uppercase tracking-wider font-medium hover:opacity-60 transition-opacity"
             >
-              El Buzón
+              Videos
             </Link>
             <Link 
               to="/archivo" 
               className="text-sm uppercase tracking-wider font-medium hover:opacity-60 transition-opacity"
             >
-              Archivo
+              Buzón
             </Link>
             <Link 
               to="/sobre-mi" 
