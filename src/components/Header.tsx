@@ -36,6 +36,12 @@ const Header = () => {
               Sobre Mí
             </Link>
             <Link 
+              to="/auth" 
+              className="text-sm uppercase tracking-wider font-medium hover:opacity-60 transition-opacity"
+            >
+              Acceder
+            </Link>
+            <Link 
               to="/admin" 
               className="text-sm uppercase tracking-wider font-medium hover:opacity-60 transition-opacity"
             >
