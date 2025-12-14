@@ -7,6 +7,7 @@ import Index from "./pages/Index";
 import Archive from "./pages/Archive";
 import About from "./pages/About";
 import Admin from "./pages/Admin";
+import Auth from "./pages/Auth";
 import Porteria from "./pages/Porteria";
 import NotFound from "./pages/NotFound";
 
@@ -21,6 +22,7 @@ const App = () => (
         <Routes>
           <Route path="/" element={<Index />} />
           <Route path="/archivo" element={<Archive />} />
+          <Route path="/auth" element={<Auth />} />
           {/* Porteria: Hidden from navigation menu but accessible via direct URL */}
           <Route path="/porteria" element={<Porteria />} />
           <Route path="/sobre-mi" element={<About />} />
