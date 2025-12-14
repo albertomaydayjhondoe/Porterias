@@ -27,21 +27,45 @@ const Archive = () => {
 
   const loadStrips = async () => {
     try {
-      if (!supabase) {
-        setStrips([]);
-        setLoading(false);
-        return;
+      // Cargar desde JSON local del repositorio
+      const response = await fetch('./data/strips.json');
+      if (response.ok) {
+        const data = await response.json();
+        // Filtrar solo imágenes y ordenar por fecha
+        const imageStrips = (data.strips || [])
+          .filter((strip: any) => strip.media_type === 'image')
+          .map((strip: any) => ({
+            id: strip.id,
+            title: strip.title,
+            image_url: strip.image_url,
+            publish_date: strip.publish_date
+          }))
+          .sort((a: any, b: any) => new Date(b.publish_date).getTime() - new Date(a.publish_date).getTime());
+        
+        setStrips(imageStrips);
+      } else {
+        // Fallback a archivo estático si existe
+        try {
+          const fallbackResponse = await fetch('./strips.json');
+          if (fallbackResponse.ok) {
+            const fallbackData = await fallbackResponse.json();
+            const imageStrips = (fallbackData.strips || [])
+              .filter((strip: any) => strip.media_type === 'image')
+              .map((strip: any) => ({
+                id: strip.id,
+                title: strip.title,
+                image_url: strip.image_url,
+                publish_date: strip.publish_date
+              }))
+              .sort((a: any, b: any) => new Date(b.publish_date).getTime() - new Date(a.publish_date).getTime());
+            setStrips(imageStrips);
+          } else {
+            setStrips([]);
+          }
+        } catch (fallbackError) {
+          setStrips([]);
+        }
       }
-
-      // Load only images for archive (buzón)
-      const { data, error } = await supabase
-        .from("comic_strips")
-        .select("id, title, image_url, publish_date")
-        .eq("media_type", "image")
-        .order("publish_date", { ascending: false });
-
-      if (error) throw error;
-      setStrips(data || []);
     } catch (error: any) {
       toast.error("Error al cargar imágenes");
       console.error(error);

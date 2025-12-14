@@ -11,6 +11,8 @@ import {
   isVideoFile,
   SECURITY_CONFIG
 } from "@/lib/security";
+import { GITHUB_CONFIG } from "@/lib/github-config";
+import { supabase } from "@/integrations/supabase/client";
 
 // Simple local authentication - no Supabase required
 const ADMIN_PASSWORD = "porteria2024";
@@ -114,6 +116,65 @@ const Admin = () => {
     }
   };
 
+  const uploadToGitHub = async (fileName: string, fileContent: string, commitMessage: string): Promise<boolean> => {
+    const GITHUB_TOKEN = GITHUB_CONFIG.GITHUB_TOKEN || localStorage.getItem('github_token');
+
+    if (!GITHUB_TOKEN) {
+      toast.error("Token de GitHub no configurado. Añade VITE_GITHUB_TOKEN a tu .env");
+      return false;
+    }
+
+    try {
+      // 1. Obtener SHA actual del archivo (si existe)
+      let fileSha = null;
+      try {
+        const getResponse = await fetch(
+          `https://api.github.com/repos/${GITHUB_CONFIG.REPO_OWNER}/${GITHUB_CONFIG.REPO_NAME}/contents/${fileName}`,
+          {
+            headers: {
+              'Authorization': `Bearer ${GITHUB_TOKEN}`,
+              'Accept': 'application/vnd.github.v3+json',
+            },
+          }
+        );
+        if (getResponse.ok) {
+          const fileData = await getResponse.json();
+          fileSha = fileData.sha;
+        }
+      } catch (error) {
+        // Archivo no existe, continuamos sin SHA
+      }
+
+      // 2. Subir archivo al repositorio
+      const uploadResponse = await fetch(
+        `https://api.github.com/repos/${GITHUB_CONFIG.REPO_OWNER}/${GITHUB_CONFIG.REPO_NAME}/contents/${fileName}`,
+        {
+          method: 'PUT',
+          headers: {
+            'Authorization': `Bearer ${GITHUB_TOKEN}`,
+            'Accept': 'application/vnd.github.v3+json',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            message: commitMessage,
+            content: fileContent,
+            ...(fileSha && { sha: fileSha }),
+          }),
+        }
+      );
+
+      if (!uploadResponse.ok) {
+        const error = await uploadResponse.json();
+        throw new Error(`GitHub API Error: ${error.message}`);
+      }
+
+      return true;
+    } catch (error: any) {
+      console.error('Error subiendo a GitHub:', error);
+      throw new Error(`Error subiendo a GitHub: ${error.message}`);
+    }
+  };
+
   const handleUpload = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -136,17 +197,18 @@ const Admin = () => {
       const timestamp = Date.now();
       const fileName = `${mediaType}-${publishDate}-${timestamp}.${fileExt}`;
 
-      // Download file for manual upload
-      const url = URL.createObjectURL(selectedFile);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = fileName;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      // 1. Convertir archivo a base64
+      const fileBase64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const result = reader.result as string;
+          resolve(result.split(',')[1]); // Remover el prefijo data:type;base64,
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(selectedFile);
+      });
 
-      // Generate next ID
+      // 2. Generar ID único
       const maxId = strips.reduce((max, s) => {
         const num = parseInt(s.id.replace(/\D/g, '') || '0');
         return num > max ? num : max;
@@ -155,87 +217,141 @@ const Admin = () => {
 
       const sanitizedTitle = title.trim().slice(0, 200);
 
-      // Create local entry
+      // 3. Subir archivo multimedia al repositorio
+      toast("📤 Subiendo archivo multimedia...", { duration: 2000 });
+      await uploadToGitHub(
+        `strips/${fileName}`,
+        fileBase64,
+        `Add ${mediaType}: ${sanitizedTitle || fileName}`
+      );
+
+      // 4. Cargar JSON actual del repositorio y actualizarlo
+      let currentStrips: any[] = [];
+      try {
+        const response = await fetch(`https://raw.githubusercontent.com/albertomaydayjhondoe/Porteria/main/data/strips.json?t=${Date.now()}`);
+        if (response.ok) {
+          const data = await response.json();
+          currentStrips = data.strips || [];
+        }
+      } catch (error) {
+        console.log('No se pudo cargar strips.json del repositorio, creando nuevo');
+      }
+
+      // 5. Añadir nuevo strip al inicio
+      const stripData = {
+        id: newId,
+        title: sanitizedTitle || null,
+        image_url: mediaType === 'image' ? `./strips/${fileName}` : null,
+        video_url: mediaType === 'video' ? `./strips/${fileName}` : null,
+        media_type: mediaType,
+        publish_date: publishDate,
+      };
+
+      currentStrips.unshift(stripData);
+
+      // 6. Generar y subir JSON actualizado
+      const updatedJson = {
+        strips: currentStrips,
+        last_updated: new Date().toISOString()
+      };
+
+      const jsonContent = btoa(unescape(encodeURIComponent(JSON.stringify(updatedJson, null, 2))));
+      
+      toast("📝 Actualizando base de datos...", { duration: 2000 });
+      await uploadToGitHub(
+        'data/strips.json',
+        jsonContent,
+        `Update strips.json: Add ${sanitizedTitle || newId}`
+      );
+
+      // 7. Actualizar lista local
       const newStrip: LocalStrip = {
         id: newId,
         title: sanitizedTitle || null,
-        image_url: mediaType === 'image' ? `/Porterias/strips/${fileName}` : null,
-        video_url: mediaType === 'video' ? `/Porterias/strips/${fileName}` : null,
+        image_url: mediaType === 'image' ? `./strips/${fileName}` : null,
+        video_url: mediaType === 'video' ? `./strips/${fileName}` : null,
         media_type: mediaType,
         publish_date: publishDate,
         file: selectedFile,
       };
 
-      // Add to local list
       setStrips(prev => [newStrip, ...prev]);
 
-      // Generate instructions
-      const instructions = `
-✅ Archivo descargado: ${fileName}
-
-📋 Pasos para completar:
-
-1. Mueve el archivo a:
-   public/strips/${fileName}
-
-2. Edita public/data/strips.json y añade al inicio del array "strips":
-${JSON.stringify({
-  id: newId,
-  title: sanitizedTitle || null,
-  image_url: mediaType === 'image' ? `/Porterias/strips/${fileName}` : null,
-  video_url: mediaType === 'video' ? `/Porterias/strips/${fileName}` : null,
-  media_type: mediaType,
-  publish_date: publishDate,
-}, null, 2)}
-
-3. Ejecuta:
-   git add public/strips/${fileName} public/data/strips.json
-   git commit -m "Add ${mediaType}: ${sanitizedTitle || fileName}"
-   git push
-      `.trim();
-
-      await navigator.clipboard.writeText(instructions);
-      
       toast.success(
-        mediaType === 'video' 
-          ? "Video descargado → Instrucciones copiadas" 
-          : "Imagen descargada → Instrucciones copiadas"
+        `🎉 ${mediaType === 'video' ? '🎥 Video' : '🖼️ Imagen'} subido al repositorio exitosamente!\n✅ Disponible en la web en ~1 minuto`
       );
-
+      
+      // Reset form
       setTitle("");
-      setPublishDate(new Date().toISOString().split('T')[0]);
       setSelectedFile(null);
       
-      // Reset file input
-      const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
-      if (fileInput) fileInput.value = '';
-      
     } catch (error: any) {
-      toast.error("Error: " + error.message);
+      console.error('Error en upload:', error);
+      toast.error(error.message || "Error al subir el archivo");
     } finally {
       setUploading(false);
     }
   };
 
-  const handleDelete = (strip: LocalStrip) => {
-    if (!confirm("¿Eliminar esta entrada?")) return;
-    
-    setStrips(prev => prev.filter(s => s.id !== strip.id));
-    
-    const mediaUrl = strip.video_url || strip.image_url || '';
-    const fileName = mediaUrl.split('/').pop();
+  const loadStrips = async () => {
+    try {
+      // Cargar desde JSON local
+      const response = await fetch('./data/strips.json');
+      if (response.ok) {
+        const data = await response.json();
+        const mappedStrips: LocalStrip[] = (data.strips || [])
+          .slice(0, 20) // Límite de 20 elementos
+          .map((strip: any) => ({
+            id: strip.id,
+            title: strip.title,
+            image_url: strip.image_url,
+            video_url: strip.video_url,
+            media_type: strip.media_type as 'image' | 'video',
+            publish_date: strip.publish_date,
+          }));
+        setStrips(mappedStrips);
+      }
+    } catch (error) {
+      console.log('No se pudo cargar strips.json, usando datos vacíos');
+      setStrips([]);
+    }
+  };
 
-    const instructions = `
+  const handleDelete = (stripId: string) => {
+    if (!confirm('⚠️ Esto solo elimina de la vista local.\n¿Continuar?')) {
+      return;
+    }
+
+    // Encontrar el strip para generar instrucciones
+    const strip = strips.find(s => s.id === stripId);
+    if (strip) {
+      const mediaUrl = strip.video_url || strip.image_url || '';
+      const fileName = mediaUrl ? mediaUrl.split('/').pop() : '';
+
+      const instructions = `
 📋 Para eliminar "${strip.title || strip.id}":
 
 1. Elimina: public/strips/${fileName}
 2. Edita public/data/strips.json y elimina la entrada con id: "${strip.id}"
 3. git add . && git commit -m "Remove ${strip.id}" && git push
-    `.trim();
+      `.trim();
 
-    navigator.clipboard.writeText(instructions);
-    toast.success("Instrucciones copiadas al portapapeles");
+      navigator.clipboard.writeText(instructions);
+      toast.success("Instrucciones de eliminación copiadas al portapapeles");
+    }
+
+    // Solo eliminar de la lista local (no del archivo JSON)
+    setStrips(prev => prev.filter(s => s.id !== stripId));
+    
+    toast.success("Eliminado de la vista local");
   };
+
+  // Cargar strips al autenticarse
+  useEffect(() => {
+    if (isAuthenticated) {
+      loadStrips();
+    }
+  }, [isAuthenticated]);
 
   // Login screen
   if (!isAuthenticated) {
@@ -363,22 +479,22 @@ ${JSON.stringify({
                 {uploading ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Procesando...
+                    Subiendo al repositorio...
                   </>
                 ) : (
                   <>
                     <Upload className="mr-2 h-4 w-4" />
-                    Subir y Descargar
+                    Subir al Repositorio
                   </>
                 )}
               </Button>
             </form>
           </div>
 
-          {/* Uploaded items this session */}
+          {/* Uploaded items */}
           {strips.length > 0 && (
             <div className="space-y-6">
-              <h2 className="text-2xl font-bold">Subidos esta sesión</h2>
+              <h2 className="text-2xl font-bold">Contenido en el Repositorio</h2>
               
               {/* Videos */}
               {strips.filter(s => s.media_type === 'video').length > 0 && (
@@ -394,11 +510,12 @@ ${JSON.stringify({
                       <div className="flex-grow">
                         <h4 className="font-bold">{strip.title || "Sin título"}</h4>
                         <p className="text-xs text-muted-foreground">{strip.publish_date}</p>
+                        <p className="text-xs text-green-600">✅ Publicado automáticamente</p>
                       </div>
                       <Button
                         variant="outline"
                         size="icon"
-                        onClick={() => handleDelete(strip)}
+                        onClick={() => handleDelete(strip.id)}
                         className="border-destructive text-destructive hover:bg-destructive hover:text-destructive-foreground"
                       >
                         <Trash2 className="h-4 w-4" />
@@ -416,9 +533,9 @@ ${JSON.stringify({
                   </h3>
                   {strips.filter(s => s.media_type === 'image').map((strip) => (
                     <div key={strip.id} className="border-2 border-primary p-4 bg-card flex gap-4 items-center">
-                      {strip.file && (
+                      {(strip.image_url || strip.file) && (
                         <img
-                          src={URL.createObjectURL(strip.file)}
+                          src={strip.image_url || (strip.file ? URL.createObjectURL(strip.file) : '')}
                           alt={strip.title || "Imagen"}
                           className="w-20 h-14 object-cover rounded"
                         />
@@ -426,11 +543,12 @@ ${JSON.stringify({
                       <div className="flex-grow">
                         <h4 className="font-bold">{strip.title || "Sin título"}</h4>
                         <p className="text-xs text-muted-foreground">{strip.publish_date}</p>
+                        <p className="text-xs text-green-600">✅ Publicado automáticamente</p>
                       </div>
                       <Button
                         variant="outline"
                         size="icon"
-                        onClick={() => handleDelete(strip)}
+                        onClick={() => handleDelete(strip.id)}
                         className="border-destructive text-destructive hover:bg-destructive hover:text-destructive-foreground"
                       >
                         <Trash2 className="h-4 w-4" />
@@ -443,14 +561,21 @@ ${JSON.stringify({
           )}
 
           {/* Instructions */}
-          <div className="mt-12 border-2 border-dashed border-muted-foreground/30 p-6 rounded">
-            <h3 className="font-bold mb-2">📋 Cómo funciona:</h3>
-            <ol className="text-sm text-muted-foreground space-y-1 list-decimal list-inside">
-              <li>Sube un archivo (video o imagen)</li>
-              <li>El archivo se descargará automáticamente</li>
-              <li>Las instrucciones se copian al portapapeles</li>
-              <li>Sigue los pasos para añadirlo al repositorio</li>
+          <div className="mt-12 border-2 border-dashed border-green-500/30 p-6 rounded bg-green-50">
+            <h3 className="font-bold mb-2 text-green-800">🚀 Upload Directo al Repositorio:</h3>
+            <ol className="text-sm text-green-700 space-y-1 list-decimal list-inside">
+              <li>Selecciona un archivo (video o imagen)</li>
+              <li>Click en "Subir al Repositorio"</li>
+              <li>Se sube automáticamente vía GitHub API</li>
+              <li>Aparece en la web en ~1 minuto</li>
+              <li>Sin pasos manuales adicionales</li>
             </ol>
+            <p className="text-xs text-green-600 mt-3 font-medium">
+              ⚡ Videos → Página principal | Imágenes → Archivo | Todo automático
+            </p>
+            <p className="text-xs text-amber-600 mt-2">
+              ⚠️ Requiere VITE_GITHUB_TOKEN en .env (ver README.md)
+            </p>
           </div>
         </div>
       </main>

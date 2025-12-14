@@ -26,24 +26,38 @@ const Index = () => {
 
   const loadVideos = async () => {
     try {
-      if (!supabase) {
+      // Cargar desde JSON local del repositorio
+      const response = await fetch('./data/strips.json');
+      if (response.ok) {
+        const data = await response.json();
+        // Filtrar solo videos y ordenar por fecha
+        const videoStrips = (data.strips || [])
+          .filter((strip: any) => strip.media_type === 'video')
+          .sort((a: any, b: any) => new Date(b.publish_date).getTime() - new Date(a.publish_date).getTime());
+        
+        setVideos(videoStrips);
+      } else {
+        // Si no existe el JSON, usar datos de fallback
         setVideos([]);
-        setLoading(false);
-        return;
       }
-
-      // Load only videos for homepage
-      const { data, error } = await supabase
-        .from("comic_strips")
-        .select("*")
-        .eq("media_type", "video")
-        .order("publish_date", { ascending: false });
-
-      if (error) throw error;
-      setVideos(data || []);
     } catch (error: any) {
       console.error("Error loading videos:", error);
-      setVideos([]);
+      // Fallback: cargar desde strips.json estático si existe
+      try {
+        const fallbackResponse = await fetch('./strips.json');
+        if (fallbackResponse.ok) {
+          const fallbackData = await fallbackResponse.json();
+          const videoStrips = (fallbackData.strips || [])
+            .filter((strip: any) => strip.media_type === 'video')
+            .sort((a: any, b: any) => new Date(b.publish_date).getTime() - new Date(a.publish_date).getTime());
+          setVideos(videoStrips);
+        } else {
+          setVideos([]);
+        }
+      } catch (fallbackError) {
+        console.log("No JSON files found, using empty data");
+        setVideos([]);
+      }
     } finally {
       setLoading(false);
     }
