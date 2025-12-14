@@ -44,6 +44,12 @@ const Admin = () => {
 
   // Set up auth state listener
   useEffect(() => {
+    // If Supabase client is not available (e.g., GitHub Pages), skip auth
+    if (!supabase) {
+      setLoading(false);
+      return;
+    }
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
         setSession(session);
@@ -83,6 +89,12 @@ const Admin = () => {
   }, [isAdmin]);
 
   const checkAdminRole = async (userId: string) => {
+    if (!supabase) {
+      setIsAdmin(false);
+      setLoading(false);
+      return;
+    }
+    
     try {
       const { data, error } = await supabase
         .from("user_roles")
@@ -133,6 +145,11 @@ const Admin = () => {
     setAuthLoading(true);
 
     try {
+      if (!supabase) {
+        toast.error("Sistema de autenticación no disponible");
+        return;
+      }
+      
       const { error } = await supabase.auth.signInWithPassword({
         email: email.trim().toLowerCase(),
         password,
@@ -168,12 +185,18 @@ const Admin = () => {
   };
 
   const handleLogout = async () => {
+    if (!supabase) return;
     await supabase.auth.signOut();
     setIsAdmin(false);
     toast.success("Sesión cerrada");
   };
 
   const loadStrips = async () => {
+    if (!supabase) {
+      setStrips([]);
+      return;
+    }
+    
     try {
       const { data, error } = await supabase
         .from("comic_strips")
