@@ -21,7 +21,9 @@ import {
 interface ComicStrip {
   id: string;
   title: string | null;
-  image_url: string;
+  image_url: string | null;
+  video_url: string | null;
+  media_type: string;
   publish_date: string;
 }
 
@@ -239,9 +241,14 @@ const Admin = () => {
       toast.error("Selecciona una imagen o video");
       return;
     }
+
+    if (!supabase) {
+      toast.error("Sistema de almacenamiento no disponible");
+      return;
+    }
     
     // Sanitize title input
-    const sanitizedTitle = title.trim().slice(0, 200); // Max 200 chars
+    const sanitizedTitle = title.trim().slice(0, 200);
     
     // Validate date format
     const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
@@ -257,68 +264,62 @@ const Admin = () => {
       const mediaType = isVideoFile(selectedFile) ? 'video' : 'image';
       const fileExt = selectedFile.name.split('.').pop()?.toLowerCase();
       const timestamp = Date.now();
-      const fileName = `strip-${publishDate}-${timestamp}.${fileExt}`;
+      const fileName = `${mediaType}-${publishDate}-${timestamp}.${fileExt}`;
 
-      // Download file with proper name for manual upload
-      const url = URL.createObjectURL(selectedFile);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = fileName;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      // Upload to Supabase Storage
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('comic-strips')
+        .upload(fileName, selectedFile, {
+          cacheControl: '3600',
+          upsert: false
+        });
 
-      // Load current strips.json to generate next ID
-      const response = await fetch('/Porterias/data/strips.json');
-      const currentStrips = await response.json();
-      const maxId = currentStrips.strips.reduce((max: number, s: any) => {
-        const num = parseInt(s.id.replace(/\D/g, ''));
-        return num > max ? num : max;
-      }, 0);
-      const newId = `strip-${String(maxId + 1).padStart(3, '0')}`;
+      if (uploadError) throw uploadError;
 
-      // Create JSON entry
-      const newStrip = {
-        id: newId,
+      // Get public URL
+      const { data: urlData } = supabase.storage
+        .from('comic-strips')
+        .getPublicUrl(fileName);
+
+      const publicUrl = urlData.publicUrl;
+
+      // Insert into database
+      const insertData: {
+        title: string | null;
+        publish_date: string;
+        media_type: 'image' | 'video';
+        image_url?: string;
+        video_url?: string;
+      } = {
         title: sanitizedTitle || null,
-        image_url: mediaType === 'image' ? `/Porterias/strips/${fileName}` : null,
-        video_url: mediaType === 'video' ? `/Porterias/strips/${fileName}` : null,
-        media_type: mediaType,
         publish_date: publishDate,
+        media_type: mediaType,
       };
 
-      // Generate instructions
-      const instructions = `
-✅ Archivo descargado: ${fileName}
+      if (mediaType === 'video') {
+        insertData.video_url = publicUrl;
+      } else {
+        insertData.image_url = publicUrl;
+      }
 
-📋 Pasos para completar:
+      const { error: insertError } = await supabase
+        .from('comic_strips')
+        .insert(insertData);
 
-1. Mueve el archivo a:
-   public/strips/${fileName}
+      if (insertError) throw insertError;
 
-2. Edita public/data/strips.json y añade al inicio del array "strips":
-${JSON.stringify(newStrip, null, 2)}
-
-3. Ejecuta en terminal:
-   git add public/strips/${fileName} public/data/strips.json
-   git commit -m "Add strip: ${sanitizedTitle || fileName}"
-   git push && npm run deploy
-
-O simplemente ejecuta:
-   npm run upload
-      `.trim();
-
-      // Copy to clipboard
-      await navigator.clipboard.writeText(instructions);
-      
-      toast.success("Archivo descargado e instrucciones copiadas al portapapeles");
-      alert(instructions);
+      toast.success(
+        mediaType === 'video' 
+          ? "Video subido → aparecerá en la página principal" 
+          : "Imagen subida → aparecerá en el archivo (buzón)"
+      );
 
       setTitle("");
       setPublishDate(new Date().toISOString().split('T')[0]);
       setSelectedFile(null);
+      loadStrips();
     } catch (error: any) {
+      console.error("Error uploading:", error);
       toast.error("Error: " + error.message);
     } finally {
       setUploading(false);
@@ -327,31 +328,33 @@ O simplemente ejecuta:
 
   const handleDelete = async (strip: ComicStrip) => {
     if (!confirm("¿Eliminar esta tira?")) return;
+    if (!supabase) return;
 
     try {
       // Extract filename from URL
-      const urlParts = (strip.image_url || '').split('/');
+      const mediaUrl = strip.video_url || strip.image_url || '';
+      const urlParts = mediaUrl.split('/');
       const fileName = urlParts[urlParts.length - 1];
 
-      const instructions = `
-📋 Para eliminar la tira "${strip.title || strip.id}":
+      // Delete from storage
+      if (fileName) {
+        await supabase.storage
+          .from('comic-strips')
+          .remove([fileName]);
+      }
 
-1. Elimina el archivo:
-   rm public/strips/${fileName}
+      // Delete from database
+      const { error } = await supabase
+        .from('comic_strips')
+        .delete()
+        .eq('id', strip.id);
 
-2. Edita public/data/strips.json y elimina la entrada con id: "${strip.id}"
+      if (error) throw error;
 
-3. Ejecuta:
-   git add public/strips/ public/data/strips.json
-   git commit -m "Remove strip: ${strip.id}"
-   git push && npm run deploy
-      `.trim();
-
-      await navigator.clipboard.writeText(instructions);
-      toast.success("Instrucciones copiadas al portapapeles");
-      alert(instructions);
+      toast.success("Tira eliminada");
+      loadStrips();
     } catch (error: any) {
-      toast.error("Error: " + error.message);
+      toast.error("Error al eliminar: " + error.message);
     }
   };
 
@@ -536,44 +539,77 @@ O simplemente ejecuta:
 
           {/* Strips list */}
           <div className="space-y-6">
-            <h2 className="text-2xl font-bold">Tiras Publicadas</h2>
-            {strips.map((strip) => (
-              <div
-                key={strip.id}
-                className="border-2 border-primary p-6 bg-card shadow-newspaper flex gap-6"
-              >
-                <img
-                  src={strip.image_url}
-                  alt={strip.title || "Tira"}
-                  className="w-32 h-32 object-cover"
-                />
-                <div className="flex-grow">
-                  <h3 className="text-lg font-bold mb-2">
-                    {strip.title || "Sin título"}
-                  </h3>
-                  <p className="text-sm text-muted-foreground">
-                    {new Date(strip.publish_date).toLocaleDateString('es-ES', {
-                      day: 'numeric',
-                      month: 'long',
-                      year: 'numeric'
-                    })}
-                  </p>
-                </div>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={() => handleDelete(strip)}
-                  className="border-2 border-destructive text-destructive hover:bg-destructive hover:text-destructive-foreground"
+            <h2 className="text-2xl font-bold">Contenido Publicado</h2>
+            
+            {/* Videos section */}
+            <div className="space-y-4">
+              <h3 className="text-lg font-semibold text-primary border-b border-primary pb-2">
+                📹 Videos (Página Principal)
+              </h3>
+              {strips.filter(s => s.media_type === 'video').map((strip) => (
+                <div
+                  key={strip.id}
+                  className="border-2 border-primary p-4 bg-card shadow-newspaper flex gap-4 items-center"
                 >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </div>
-            ))}
-            {strips.length === 0 && (
-              <p className="text-center text-muted-foreground py-8">
-                No hay tiras publicadas aún
-              </p>
-            )}
+                  <div className="w-24 h-16 bg-muted flex items-center justify-center rounded overflow-hidden">
+                    <video src={strip.video_url || ''} className="w-full h-full object-cover" muted />
+                  </div>
+                  <div className="flex-grow">
+                    <h4 className="font-bold">{strip.title || "Sin título"}</h4>
+                    <p className="text-xs text-muted-foreground">
+                      {new Date(strip.publish_date).toLocaleDateString('es-ES')}
+                    </p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => handleDelete(strip)}
+                    className="border-destructive text-destructive hover:bg-destructive hover:text-destructive-foreground"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              ))}
+              {strips.filter(s => s.media_type === 'video').length === 0 && (
+                <p className="text-sm text-muted-foreground py-4 text-center">No hay videos</p>
+              )}
+            </div>
+
+            {/* Images section */}
+            <div className="space-y-4">
+              <h3 className="text-lg font-semibold text-primary border-b border-primary pb-2">
+                🖼️ Imágenes (Archivo/Buzón)
+              </h3>
+              {strips.filter(s => s.media_type === 'image').map((strip) => (
+                <div
+                  key={strip.id}
+                  className="border-2 border-primary p-4 bg-card shadow-newspaper flex gap-4 items-center"
+                >
+                  <img
+                    src={strip.image_url || ''}
+                    alt={strip.title || "Tira"}
+                    className="w-24 h-16 object-cover rounded"
+                  />
+                  <div className="flex-grow">
+                    <h4 className="font-bold">{strip.title || "Sin título"}</h4>
+                    <p className="text-xs text-muted-foreground">
+                      {new Date(strip.publish_date).toLocaleDateString('es-ES')}
+                    </p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => handleDelete(strip)}
+                    className="border-destructive text-destructive hover:bg-destructive hover:text-destructive-foreground"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              ))}
+              {strips.filter(s => s.media_type === 'image').length === 0 && (
+                <p className="text-sm text-muted-foreground py-4 text-center">No hay imágenes</p>
+              )}
+            </div>
           </div>
         </div>
       </main>
