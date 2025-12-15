@@ -426,6 +426,30 @@ const Admin = () => {
             </Button>
           </div>
 
+          {/* GitHub Token Configuration */}
+          <div className="border-2 border-amber-500 p-6 bg-amber-50 mb-6 rounded">
+            <h3 className="font-bold mb-3 text-amber-800">🔑 Configuración de GitHub Token</h3>
+            <div className="space-y-3">
+              <Input
+                type="password"
+                placeholder="Pega tu token de GitHub aquí (ghp_...)"
+                className="border-2 border-amber-500"
+                onChange={(e) => {
+                  if (e.target.value) {
+                    localStorage.setItem('github_token', e.target.value);
+                    toast.success("Token configurado correctamente");
+                  }
+                }}
+              />
+              <p className="text-xs text-amber-700">
+                📋 <strong>Crea tu token:</strong> GitHub Settings → Tokens → Generate new (classic) → Permisos: repo, contents:write
+              </p>
+              <p className="text-xs text-green-700">
+                {localStorage.getItem('github_token') ? '✅ Token configurado' : '⚠️ Token no configurado'}
+              </p>
+            </div>
+          </div>
+
           {/* Upload form */}
           <div className="border-2 border-primary p-8 bg-card shadow-editorial mb-12">
             <h2 className="text-2xl font-bold mb-6">Subir Nuevo Contenido</h2>

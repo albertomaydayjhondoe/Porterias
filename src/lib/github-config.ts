@@ -1,7 +1,7 @@
 // Configuración del GitHub API
 export const GITHUB_CONFIG = {
-  // Configurar en variables de entorno o aquí directamente
-  GITHUB_TOKEN: import.meta.env.VITE_GITHUB_TOKEN || "", // Reemplaza con tu token real
+  // Token desde variables de entorno o localStorage (configurar en el navegador)
+  GITHUB_TOKEN: import.meta.env.VITE_GITHUB_TOKEN || "", // Se configura desde el admin
   REPO_OWNER: "albertomaydayjhondoe",
   REPO_NAME: "Porteria",
   BRANCH: "main",

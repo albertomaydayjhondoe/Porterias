@@ -17,47 +17,30 @@ interface ComicStrip {
 
 const Index = () => {
   const navigate = useNavigate();
-  const [videos, setVideos] = useState<ComicStrip[]>([]);
+  const [strips, setStrips] = useState<ComicStrip[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    loadVideos();
+    loadStrips();
   }, []);
 
-  const loadVideos = async () => {
+  const loadStrips = async () => {
     try {
       // Cargar desde JSON local del repositorio
       const response = await fetch('./data/strips.json');
       if (response.ok) {
         const data = await response.json();
-        // Filtrar solo videos y ordenar por fecha
-        const videoStrips = (data.strips || [])
-          .filter((strip: any) => strip.media_type === 'video')
+        // Ordenar por fecha (más recientes primero)
+        const allStrips = (data.strips || [])
           .sort((a: any, b: any) => new Date(b.publish_date).getTime() - new Date(a.publish_date).getTime());
         
-        setVideos(videoStrips);
+        setStrips(allStrips);
       } else {
-        // Si no existe el JSON, usar datos de fallback
-        setVideos([]);
+        setStrips([]);
       }
     } catch (error: any) {
-      console.error("Error loading videos:", error);
-      // Fallback: cargar desde strips.json estático si existe
-      try {
-        const fallbackResponse = await fetch('./strips.json');
-        if (fallbackResponse.ok) {
-          const fallbackData = await fallbackResponse.json();
-          const videoStrips = (fallbackData.strips || [])
-            .filter((strip: any) => strip.media_type === 'video')
-            .sort((a: any, b: any) => new Date(b.publish_date).getTime() - new Date(a.publish_date).getTime());
-          setVideos(videoStrips);
-        } else {
-          setVideos([]);
-        }
-      } catch (fallbackError) {
-        console.log("No JSON files found, using empty data");
-        setVideos([]);
-      }
+      console.error("Error loading strips:", error);
+      setStrips([]);
     } finally {
       setLoading(false);
     }
@@ -77,15 +60,15 @@ const Index = () => {
         <Header />
         <main className="flex-grow flex items-center justify-center">
           <div className="text-center px-6">
-            <h2 className="text-3xl font-bold mb-4">No hay videos publicados aún</h2>
+            <h2 className="text-3xl font-bold mb-4">No hay contenido publicado aún</h2>
             <p className="text-muted-foreground mb-6">
-              Los videos aparecerán aquí cuando se suban desde el panel de administración
+              El contenido aparecerá aquí cuando se suba desde el panel de administración
             </p>
             <button
               onClick={() => navigate('/archivo')}
               className="inline-block border-2 border-primary px-8 py-3 font-medium hover:bg-primary hover:text-primary-foreground transition-colors"
             >
-              Ver Archivo de Imágenes
+              Ver Archivo
             </button>
           </div>
         </main>
@@ -94,21 +77,21 @@ const Index = () => {
     );
   }
 
-  const latestVideo = videos[0];
+  const latestStrip = strips[0];
 
   return (
     <div className="min-h-screen flex flex-col">
       <Header />
       
       <main className="flex-grow">
-        {/* Latest video */}
-        <StripViewer strips={videos.map(v => ({
-          id: v.id,
-          title: v.title,
-          image_url: v.image_url || '',
-          video_url: v.video_url || undefined,
-          media_type: 'video' as const,
-          publish_date: v.publish_date,
+        {/* Latest strip (video or image) */}
+        <StripViewer strips={strips.map(s => ({
+          id: s.id,
+          title: s.title,
+          image_url: s.image_url || '',
+          video_url: s.video_url || undefined,
+          media_type: s.media_type as 'video' | 'image',
+          publish_date: s.publish_date,
         }))} />
 
         {/* Call to action for archive */}
@@ -116,16 +99,16 @@ const Index = () => {
           <div className="container mx-auto max-w-2xl">
             <div className="border-2 border-primary p-12 bg-card shadow-editorial">
               <h3 className="text-3xl font-bold mb-4">
-                Explora el Buzón
+                Explora el Archivo
               </h3>
               <p className="text-muted-foreground mb-6">
-                Visita el archivo completo para ver todas las imágenes y tiras publicadas
+                Visita el archivo completo para ver todo el contenido publicado
               </p>
               <button
                 onClick={() => navigate('/archivo')}
                 className="inline-block border-2 border-primary px-8 py-3 font-medium hover:bg-primary hover:text-primary-foreground transition-colors"
               >
-                Ver Archivo de Imágenes
+                Ver Archivo
               </button>
             </div>
           </div>
