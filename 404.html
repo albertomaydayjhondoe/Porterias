@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <title>La Portería</title>
+    <script>
+      // SPA redirect for GitHub Pages - handle all 404s
+      (function() {
+        // Get the full path including /Porterias/
+        const pathName = window.location.pathname;
+        const search = window.location.search;
+        const hash = window.location.hash;
+        
+        // Save the intended path in sessionStorage
+        const intendedPath = pathName + search + hash;
+        sessionStorage.setItem('redirect-url', intendedPath);
+        
+        // Always redirect to the root
+        window.location.replace('/Porterias/');
+      })();
+    </script>
+  </head>
+  <body>
+    <p>Cargando...</p>
+  </body>
+</html>
